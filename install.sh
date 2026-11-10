@@ -12,7 +12,7 @@
 
 set -eu
 
-REPO="Darshan1510/pdf-compressor"
+REPO="Darshan1510/DocKit"
 APP_NAME="DocKit"
 # Earlier releases were called PDFCompressor; the installer replaces that app.
 LEGACY_APP_PATH="$HOME/Downloads/PDFCompressor.app"

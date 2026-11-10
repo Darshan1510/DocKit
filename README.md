@@ -17,7 +17,7 @@ DocKit is a small desktop app with everyday tools for **PDFs**, **images** and *
 Open Terminal (Spotlight → type "Terminal" → Enter) and paste:
 
 ```sh
-curl -LsSf https://raw.githubusercontent.com/Darshan1510/pdf-compressor/main/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/Darshan1510/DocKit/main/install.sh | sh
 ```
 
 This downloads the latest release, installs it to `~/Downloads`, strips the macOS quarantine flag (so Gatekeeper doesn't block the unsigned app), and launches it.
@@ -33,8 +33,8 @@ To update, re-run the same command.
 A ready-made Windows download is not available yet. To run it on Windows, use the source code (needs [uv](https://docs.astral.sh/uv/)):
 
 ```sh
-git clone https://github.com/Darshan1510/pdf-compressor.git
-cd pdf-compressor
+git clone https://github.com/Darshan1510/DocKit.git
+cd DocKit
 uv sync
 uv run main.py
 ```
