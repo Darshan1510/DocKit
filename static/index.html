@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Tools</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+  .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+  header { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
+  h1 { font-size: 1.5rem; }
+  .tagline { text-align: center; color: #666; font-size: 14px; margin-bottom: 24px; }
+
+  /* Home: tool grid */
+  .group-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #888; margin: 20px 0 10px; }
+  .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .tool-card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; border: 2px solid transparent; text-align: left; font: inherit; color: inherit; transition: border-color .15s, transform .15s; }
+  .tool-card:hover { border-color: #2563eb; transform: translateY(-2px); }
+  .tool-card .ico { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 10px; }
+  .tool-card .name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .tool-card .desc { font-size: 13px; color: #666; line-height: 1.35; }
+
+  /* Tool view */
+  .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
+  .card h2 { font-size: 1.1rem; margin-bottom: 14px; }
+  .tool-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .tool-head h2 { font-size: 1.3rem; }
+  .tool-head p { color: #666; font-size: 14px; }
+
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Drop zone */
+  .drop-zone { border: 2px dashed #ccc; border-radius: 8px; padding: 48px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #2563eb; background: #f0f4ff; }
+  .drop-zone p { color: #666; margin-bottom: 8px; }
+  .drop-zone.compact { padding: 14px; }
+
+  /* File list */
+  .files { list-style: none; margin-top: 12px; }
+  .file { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; background: #fafafa; margin-bottom: 8px; border: 1px solid #eee; }
+  .file.dragging { opacity: .4; }
+  .file img { width: 44px; height: 56px; object-fit: contain; background: #fff; border: 1px solid #ddd; border-radius: 3px; }
+  .file .fname { flex: 1; min-width: 0; font-size: 14px; }
+  .file .fname div:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .meta { font-size: 12px; color: #888; }
+  .file .err { font-size: 12px; color: #dc2626; }
+  .icon-btn { border: none; background: #e5e7eb; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 14px; color: #333; }
+  .icon-btn:hover { background: #d1d5db; }
+  .icon-btn.danger:hover { background: #fecaca; color: #b91c1c; }
+
+  /* Page grid */
+  .page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-top: 12px; }
+  .page { position: relative; background: #fafafa; border: 2px solid #eee; border-radius: 8px; padding: 8px; text-align: center; user-select: none; }
+  .page .thumb { height: 150px; display: flex; align-items: center; justify-content: center; }
+  .page img { max-width: 100%; max-height: 140px; box-shadow: 0 1px 3px rgba(0,0,0,.2); background: #fff; transition: transform .2s; }
+  .page .num { font-size: 12px; color: #666; margin-top: 6px; }
+  .page .tools { position: absolute; top: 6px; right: 6px; display: none; gap: 4px; }
+  .page:hover .tools { display: flex; }
+  .page.sortable { cursor: grab; }
+  .page.dragging { opacity: .4; }
+  .page.selectable { cursor: pointer; }
+  .page.selected { border-color: #2563eb; background: #eef3ff; }
+  .page.selected::after { content: '✓'; position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 13px; line-height: 22px; }
+  .page.remove-mode.selected { border-color: #dc2626; background: #fef2f2; }
+  .page.remove-mode.selected::after { content: '✕'; background: #dc2626; }
+  .page.remove-mode.selected img { opacity: .35; }
+  .grid-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; font-size: 13px; color: #666; }
+
+  /* Options */
+  .opt { margin-bottom: 16px; }
+  .opt > label, .opt > .label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .opt input[type=text], .opt input[type=password], .opt input[type=number], .opt select { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; font-size: 14px; background: #fff; }
+  .opt input[type=range] { width: 100%; }
+  .opt .row { display: flex; justify-content: space-between; font-size: 13px; color: #666; }
+  .hint { font-size: 12px; color: #888; margin-top: 4px; line-height: 1.4; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+  .seg label { display: block; }
+  .seg input { display: none; }
+  .seg span { display: block; text-align: center; padding: 8px 4px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  .seg input:checked + span { border-color: #2563eb; background: #f0f4ff; font-weight: 600; }
+  .presets { display: grid; gap: 6px; }
+  .presets span { text-align: left; padding: 8px 10px; }
+  .presets small { display: block; font-weight: 400; color: #666; font-size: 12px; }
+  .positions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+  /* Buttons */
+  .actions { display: flex; gap: 12px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .btn { padding: 10px 24px; border-radius: 6px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; font-family: inherit; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-block { width: 100%; padding: 12px; font-size: 15px; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-secondary { background: #e5e7eb; color: #333; }
+  .btn-secondary:hover { background: #d1d5db; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .error-box { background: #fef2f2; color: #b91c1c; border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }
+
+  /* Result */
+  .result { text-align: center; padding: 16px 0; }
+  .result .big { font-size: 48px; color: #16a34a; }
+  .result h2 { margin: 8px 0; }
+  .result .sub { color: #666; font-size: 14px; }
+  .result table { margin: 16px auto 0; border-collapse: collapse; font-size: 13px; }
+  .result td { padding: 4px 10px; text-align: right; font-variant-numeric: tabular-nums; }
+  .result td:first-child { text-align: left; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .saved { color: #16a34a; font-weight: 700; }
+
+  .loading { text-align: center; padding: 40px; color: #666; }
+  .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>PDF Tools</h1>
+    <button class="btn btn-secondary btn-sm hidden" id="home-btn">← All tools</button>
+  </header>
+  <p class="tagline">Compress, merge, split and convert PDFs. Files stay on this computer.</p>
+
+  <!-- Home -->
+  <div id="home"></div>
+
+  <!-- Tool view -->
+  <div id="tool" class="hidden">
+    <div class="tool-head">
+      <div class="ico" id="tool-ico" style="width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;"></div>
+      <div><h2 id="tool-title"></h2><p id="tool-desc"></p></div>
+    </div>
+
+    <div id="workspace" class="layout">
+      <div class="card" style="margin:0;">
+        <div class="drop-zone" id="drop-zone">
+          <p id="drop-text"></p>
+          <p class="hint" id="drop-hint"></p>
+        </div>
+        <input type="file" id="file-input" hidden>
+        <div id="uploading" class="loading hidden"><div class="spinner"></div><p>Reading files…</p></div>
+        <div id="items"></div>
+      </div>
+
+      <div class="card" style="margin:0;">
+        <h2>Options</h2>
+        <div id="options"></div>
+        <button class="btn btn-primary btn-block" id="run-btn" disabled></button>
+        <div class="error-box hidden" id="error"></div>
+      </div>
+    </div>
+
+    <div id="working" class="card loading hidden"><div class="spinner"></div><p>Working…</p></div>
+
+    <div id="result" class="card hidden"></div>
+  </div>
+</div>
+
+<script>
+// ---------- Tool definitions ----------
+
+const GROUPS = ['Optimize', 'Organize', 'Convert', 'Edit', 'Security'];
+
+const TOOLS = {
+  compress:        { group: 'Optimize', name: 'Compress PDF', icon: '🗜️', color: '#dcfce7', desc: 'Make PDFs smaller. Text stays sharp.', accept: 'pdf', multi: true, view: 'list', action: 'Compress' },
+  merge:           { group: 'Organize', name: 'Merge PDF', icon: '🔗', color: '#fee2e2', desc: 'Combine PDFs in the order you want.', accept: 'pdf', multi: true, min: 2, view: 'list', sortable: true, action: 'Merge PDFs' },
+  split:           { group: 'Organize', name: 'Split PDF', icon: '✂️', color: '#fee2e2', desc: 'Split by page ranges or every N pages.', accept: 'pdf', view: 'grid', action: 'Split PDF' },
+  organize:        { group: 'Organize', name: 'Organize PDF', icon: '🗂️', color: '#fee2e2', desc: 'Drag to reorder, rotate or delete pages.', accept: 'pdf', view: 'organize', action: 'Save changes' },
+  rotate:          { group: 'Organize', name: 'Rotate PDF', icon: '🔄', color: '#fee2e2', desc: 'Rotate all pages at once.', accept: 'pdf', view: 'grid', action: 'Rotate PDF' },
+  remove:          { group: 'Organize', name: 'Remove pages', icon: '🗑️', color: '#fee2e2', desc: 'Click pages to delete them.', accept: 'pdf', view: 'select', action: 'Remove pages' },
+  extract:         { group: 'Organize', name: 'Extract pages', icon: '📤', color: '#fee2e2', desc: 'Pick pages to save as a new PDF.', accept: 'pdf', view: 'select', action: 'Extract pages' },
+  'pdf-to-images': { group: 'Convert', name: 'PDF to JPG', icon: '🖼️', color: '#fef9c3', desc: 'Save every page as a JPG or PNG image.', accept: 'pdf', view: 'grid', action: 'Convert to images' },
+  'images-to-pdf': { group: 'Convert', name: 'JPG to PDF', icon: '📄', color: '#fef9c3', desc: 'Turn photos and images into one PDF.', accept: 'image', multi: true, view: 'list', sortable: true, action: 'Create PDF' },
+  'page-numbers':  { group: 'Edit', name: 'Page numbers', icon: '🔢', color: '#e0e7ff', desc: 'Add page numbers to every page.', accept: 'pdf', view: 'grid', action: 'Add page numbers' },
+  watermark:       { group: 'Edit', name: 'Watermark', icon: '💧', color: '#e0e7ff', desc: 'Stamp text over every page.', accept: 'pdf', view: 'grid', action: 'Add watermark' },
+  protect:         { group: 'Security', name: 'Protect PDF', icon: '🔒', color: '#f3e8ff', desc: 'Encrypt a PDF with a password.', accept: 'pdf', view: 'list', action: 'Protect PDF' },
+  unlock:          { group: 'Security', name: 'Unlock PDF', icon: '🔓', color: '#f3e8ff', desc: 'Remove the password from a PDF.', accept: 'pdf', view: 'list', allowEncrypted: true, action: 'Unlock PDF' },
+};
+
+const seg = (name, items, checked) => `<div class="seg">${items.map(([v, t]) =>
+  `<label><input type="radio" name="${name}" value="${v}" ${v === checked ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div>`;
+
+const OPTIONS = {
+  compress: () => `
+    <div class="opt"><div class="label">Compression level</div>
+      <div class="seg presets" style="grid-auto-flow:row;">
+        ${[['light', 'Light', '200 DPI · best quality'], ['balanced', 'Balanced', '144 DPI · recommended'],
+           ['strong', 'Strong', '96 DPI · smallest file'], ['custom', 'Custom', 'Choose DPI and quality']]
+          .map(([v, t, s]) => `<label><input type="radio" name="preset" value="${v}" ${v === 'balanced' ? 'checked' : ''}><span>${t}<small>${s}</small></span></label>`).join('')}
+      </div></div>
+    <div id="custom-opts" class="hidden">
+      <div class="opt"><div class="row"><b>Image DPI</b><span id="dpi-v">144</span></div>
+        <input type="range" name="dpi" min="50" max="300" step="10" value="144" data-show="dpi-v"></div>
+      <div class="opt"><div class="row"><b>JPEG quality</b><span id="quality-v">65</span></div>
+        <input type="range" name="quality" min="10" max="95" step="5" value="65" data-show="quality-v">
+        <p class="hint">72–96 DPI: screen · 150: most uses · 300: print</p></div>
+    </div>
+    <div class="opt"><label class="check"><input type="checkbox" name="grayscale"> Convert images to grayscale</label></div>`,
+
+  merge: () => `<p class="hint" style="margin-bottom:16px;">Drag files or use the arrows to set the order. Pages are joined top to bottom.</p>`,
+
+  split: () => `
+    <div class="opt"><div class="label">Split mode</div>${seg('mode', [['every', 'Every N pages'], ['ranges', 'Custom ranges']], 'every')}</div>
+    <div class="opt" id="every-opt"><label>Pages per file</label><input type="number" name="every" min="1" value="1"></div>
+    <div class="opt hidden" id="ranges-opt"><label>Ranges</label><input type="text" name="ranges" placeholder="1-3, 4, 5-">
+      <p class="hint">Each range becomes one PDF. "5-" means page 5 to the end.</p></div>`,
+
+  organize: () => `<p class="hint" style="margin-bottom:16px;">Drag pages to reorder. Hover a page to rotate or delete it.</p>`,
+
+  rotate: () => `<div class="opt"><div class="label">Rotation</div>${seg('angle', [['90', '↻ 90°'], ['180', '180°'], ['270', '↺ 90°']], '90')}</div>`,
+
+  remove: () => `<p class="hint" style="margin-bottom:16px;">Click the pages you want to delete.</p>`,
+  extract: () => `<p class="hint" style="margin-bottom:16px;">Click the pages you want to keep in the new PDF.</p>`,
+
+  'pdf-to-images': () => `
+    <div class="opt"><div class="label">Format</div>${seg('format', [['jpg', 'JPG'], ['png', 'PNG']], 'jpg')}</div>
+    <div class="opt"><div class="label">Quality</div>${seg('dpi', [['96', 'Screen'], ['150', 'Normal'], ['300', 'High']], '150')}
+      <p class="hint">Several pages are saved together as a .zip file.</p></div>`,
+
+  'images-to-pdf': () => `
+    <div class="opt"><div class="label">Page size</div>${seg('page_size', [['a4', 'A4'], ['letter', 'Letter'], ['fit', 'Fit image']], 'a4')}</div>
+    <div class="opt"><div class="label">Margin</div>${seg('margin', [['none', 'None'], ['small', 'Small'], ['big', 'Big']], 'small')}
+      <p class="hint">Landscape images get landscape pages automatically.</p></div>`,
+
+  'page-numbers': () => `
+    <div class="opt"><div class="label">Position</div><div class="positions">
+      ${['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(p =>
+        `<label class="seg"><input type="radio" name="position" value="${p}" ${p === 'bottom-center' ? 'checked' : ''}><span>${p.replace('-', ' ').replace('center', 'middle')}</span></label>`).join('')}
+    </div></div>
+    <div class="opt"><label>Format</label><select name="format">
+      <option value="n">1</option><option value="page-n">Page 1</option>
+      <option value="n-of-total">1 of 10</option><option value="page-n-of-total">Page 1 of 10</option></select></div>
+    <div class="opt" style="display:flex;gap:8px;">
+      <div style="flex:1"><label class="label" style="font-size:13px;font-weight:600;">First number</label><input type="number" name="start" value="1" min="0"></div>
+      <div style="flex:1"><label class="label" style="font-size:13px;font-weight:600;">Font size</label><input type="number" name="size" value="11" min="6" max="72"></div>
+    </div>
+    <div class="opt"><label class="check"><input type="checkbox" name="skip_first"> Skip first page (cover)</label></div>`,
+
+  watermark: () => `
+    <div class="opt"><label>Text</label><input type="text" name="text" value="CONFIDENTIAL" maxlength="80"></div>
+    <div class="opt"><div class="label">Position</div>${seg('position', [['top', 'Top'], ['center', 'Center'], ['bottom', 'Bottom']], 'center')}</div>
+    <div class="opt"><div class="label">Angle</div>${seg('rotation', [['0', 'Flat'], ['45', 'Diagonal']], '45')}</div>
+    <div class="opt"><div class="row"><b>Size</b><span id="size-v">60</span></div><input type="range" name="size" min="12" max="150" value="60" data-show="size-v"></div>
+    <div class="opt"><div class="row"><b>Opacity</b><span id="opacity-v">0.25</span></div><input type="range" name="opacity" min="0.05" max="1" step="0.05" value="0.25" data-show="opacity-v"></div>
+    <div class="opt"><label>Color</label><input type="color" name="color" value="#dc2626" style="width:100%;height:34px;border:1px solid #d1d5db;border-radius:6px;"></div>`,
+
+  protect: () => `
+    <div class="opt"><label>Password</label><input type="password" name="password" autocomplete="new-password"></div>
+    <div class="opt"><label>Confirm password</label><input type="password" name="confirm" autocomplete="new-password">
+      <p class="hint">Uses AES-256. Keep the password safe: it cannot be recovered.</p></div>`,
+
+  unlock: () => `
+    <div class="opt"><label>Current password</label><input type="password" name="password" autocomplete="current-password">
+      <p class="hint">You need to know the password. This tool removes it from the saved copy.</p></div>`,
+};
+
+// ---------- State ----------
+
+let toolKey = null;
+let files = [];      // uploaded file metadata from the server
+let pages = [];      // organize: [{index, rotate}] ; other grid views: page indexes
+let selected = new Set();
+let lastResult = null;
+
+const $ = id => document.getElementById(id);
+const tool = () => TOOLS[toolKey];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function fmt(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+// ---------- Home ----------
+
+function renderHome() {
+  $('home').innerHTML = GROUPS.map(g => `
+    <div class="group-title">${g}</div>
+    <div class="tool-grid">${Object.entries(TOOLS).filter(([, t]) => t.group === g).map(([k, t]) => `
+      <button class="tool-card" data-tool="${k}">
+        <div class="ico" style="background:${t.color}">${t.icon}</div>
+        <div class="name">${t.name}</div><div class="desc">${t.desc}</div>
+      </button>`).join('')}</div>`).join('');
+}
+
+$('home').addEventListener('click', e => {
+  const card = e.target.closest('[data-tool]');
+  if (card) openTool(card.dataset.tool);
+});
+$('home-btn').addEventListener('click', goHome);
+
+function goHome() {
+  toolKey = null;
+  $('home').classList.remove('hidden');
+  $('tool').classList.add('hidden');
+  $('home-btn').classList.add('hidden');
+  history.replaceState(null, '', '#');
+}
+
+function openTool(key) {
+  toolKey = key;
+  const t = tool();
+  $('home').classList.add('hidden');
+  $('tool').classList.remove('hidden');
+  $('home-btn').classList.remove('hidden');
+  $('tool-ico').textContent = t.icon;
+  $('tool-ico').style.background = t.color;
+  $('tool-title').textContent = t.name;
+  $('tool-desc').textContent = t.desc;
+  $('run-btn').textContent = t.action;
+  $('options').innerHTML = OPTIONS[key]();
+  const input = $('file-input');
+  input.accept = t.accept === 'pdf' ? 'application/pdf,.pdf' : 'image/*';
+  input.multiple = !!t.multi;
+  history.replaceState(null, '', '#' + key);
+  resetTool();
+}
+
+function resetTool() {
+  files = []; pages = []; selected = new Set(); lastResult = null;
+  $('workspace').classList.remove('hidden');
+  $('result').classList.add('hidden');
+  $('working').classList.add('hidden');
+  showError('');
+  renderItems();
+  onOptionsChange();
+}
+
+// ---------- Upload ----------
+
+const dz = $('drop-zone');
+dz.addEventListener('click', () => $('file-input').click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); uploadFiles(e.dataTransfer.files); });
+$('file-input').addEventListener('change', e => { uploadFiles(e.target.files); e.target.value = ''; });
+
+async function uploadFiles(list) {
+  const t = tool();
+  let chosen = [...list].filter(f => t.accept === 'pdf'
+    ? (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
+    : (f.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|tiff?|webp)$/i.test(f.name)));
+  if (!chosen.length) { showError(t.accept === 'pdf' ? 'Please choose PDF files.' : 'Please choose image files.'); return; }
+  if (!t.multi) chosen = chosen.slice(0, 1);
+
+  const form = new FormData();
+  chosen.forEach(f => form.append('files', f));
+  $('uploading').classList.remove('hidden');
+  showError('');
+  try {
+    const resp = await fetch('/upload', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Upload failed');
+    const errors = [];
+    for (const f of data) {
+      if (f.error) errors.push(`${f.name}: ${f.error}`);
+      else if (f.encrypted && !t.allowEncrypted) errors.push(`${f.name}: password protected. Use Unlock PDF first.`);
+      else if (t.multi) files.push(f);
+      else files = [f];
+    }
+    if (!t.multi && files.length) {
+      const n = files[0].pages || 0;
+      pages = toolKey === 'organize' ? [...Array(n).keys()].map(i => ({ index: i, rotate: 0 })) : [...Array(n).keys()];
+      selected = new Set();
+    }
+    showError(errors.join('\n'));
+  } catch (e) {
+    showError(e.message);
+  }
+  $('uploading').classList.add('hidden');
+  renderItems();
+}
+
+// ---------- Workspace rendering ----------
+
+function renderItems() {
+  const t = tool();
+  const has = files.length > 0;
+  dz.classList.toggle('compact', has);
+  dz.classList.toggle('hidden', has && !t.multi && t.view !== 'list');
+  $('drop-text').textContent = has
+    ? (t.multi ? '+ Add more files' : 'Choose a different file')
+    : (t.accept === 'pdf' ? `Drag & drop PDF file${t.multi ? 's' : ''} here, or click to select` : 'Drag & drop images here, or click to select');
+  $('drop-hint').textContent = has ? '' : (t.accept === 'pdf' ? '' : 'JPG, PNG, GIF, BMP, TIFF, WEBP');
+
+  let html = '';
+  if (has && (t.view === 'list' || t.multi)) {
+    html = `<ul class="files" id="file-list">${files.map((f, i) => `
+      <li class="file" draggable="${!!t.sortable}" data-i="${i}">
+        ${f.encrypted ? '<div style="width:44px;text-align:center;font-size:22px;">🔒</div>' : `<img src="/thumb/${f.id}/0?width=88" alt="">`}
+        <div class="fname"><div title="${esc(f.name)}">${esc(f.name)}</div>
+          <div class="meta">${fmt(f.size)}${f.pages ? ` · ${f.pages} page${f.pages > 1 ? 's' : ''}` : ''}${f.encrypted ? ' · password protected' : ''}</div></div>
+        ${t.sortable ? `<button class="icon-btn" data-act="up" data-i="${i}" title="Move up">↑</button>
+                        <button class="icon-btn" data-act="down" data-i="${i}" title="Move down">↓</button>` : ''}
+        <button class="icon-btn danger" data-act="remove-file" data-i="${i}" title="Remove">✕</button>
+      </li>`).join('')}</ul>`;
+  } else if (has) {
+    html = renderGrid();
+  }
+  $('items').innerHTML = html;
+  updateRunButton();
+}
+
+function renderGrid() {
+  const t = tool();
+  const f = files[0];
+  const angle = toolKey === 'rotate' ? Number(getOptions().angle || 0) : 0;
+  const cards = (t.view === 'organize' ? pages : pages.map(i => ({ index: i, rotate: angle }))).map((p, pos) => {
+    const cls = ['page'];
+    if (t.view === 'organize') cls.push('sortable');
+    if (t.view === 'select') { cls.push('selectable'); if (selected.has(p.index)) cls.push('selected'); if (toolKey === 'remove') cls.push('remove-mode'); }
+    const toolsHtml = t.view === 'organize' ? `<div class="tools">
+        <button class="icon-btn" data-act="rot" data-pos="${pos}" title="Rotate">↻</button>
+        <button class="icon-btn danger" data-act="del" data-pos="${pos}" title="Delete">✕</button></div>` : '';
+    return `<div class="${cls.join(' ')}" data-pos="${pos}" data-index="${p.index}" draggable="${t.view === 'organize'}">
+      ${toolsHtml}
+      <div class="thumb"><img src="/thumb/${f.id}/${p.index}?width=200" loading="lazy" style="transform:rotate(${p.rotate}deg)" alt=""></div>
+      <div class="num">${p.index + 1}</div></div>`;
+  }).join('');
+
+  let bar = `<span>${esc(f.name)} · ${f.pages} page${f.pages > 1 ? 's' : ''}</span>`;
+  if (t.view === 'organize') bar += `<span style="flex:1"></span>
+      <button class="btn btn-secondary btn-sm" data-act="rot-all">Rotate all ↻</button>
+      <button class="btn btn-secondary btn-sm" data-act="reset-pages">Reset</button>`;
+  if (t.view === 'select') bar += `<span style="flex:1"></span><b>${selected.size} selected</b>
+      <button class="btn btn-secondary btn-sm" data-act="sel-all">Select all</button>
+      <button class="btn btn-secondary btn-sm" data-act="sel-none">Clear</button>`;
+  bar += `<button class="btn btn-secondary btn-sm" data-act="change-file">Change file</button>`;
+  return `<div class="grid-bar">${bar}</div><div class="page-grid" id="page-grid">${cards}</div>`;
+}
+
+$('items').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (btn) {
+    const i = Number(btn.dataset.i), pos = Number(btn.dataset.pos);
+    switch (btn.dataset.act) {
+      case 'up': if (i > 0) [files[i - 1], files[i]] = [files[i], files[i - 1]]; break;
+      case 'down': if (i < files.length - 1) [files[i + 1], files[i]] = [files[i], files[i + 1]]; break;
+      case 'remove-file': files.splice(i, 1); if (!tool().multi) pages = []; break;
+      case 'rot': pages[pos].rotate = (pages[pos].rotate + 90) % 360; break;
+      case 'del': pages.splice(pos, 1); break;
+      case 'rot-all': pages.forEach(p => p.rotate = (p.rotate + 90) % 360); break;
+      case 'reset-pages': pages = [...Array(files[0].pages).keys()].map(i => ({ index: i, rotate: 0 })); break;
+      case 'sel-all': selected = new Set(pages); break;
+      case 'sel-none': selected = new Set(); break;
+      case 'change-file': $('file-input').click(); return;
+    }
+    renderItems();
+    return;
+  }
+  const page = e.target.closest('.page.selectable');
+  if (page) {
+    const idx = Number(page.dataset.index);
+    selected.has(idx) ? selected.delete(idx) : selected.add(idx);
+    renderItems();
+  }
+});
+
+// Drag to reorder (file list and organize grid)
+let dragFrom = null;
+$('items').addEventListener('dragstart', e => {
+  const el = e.target.closest('[draggable=true]');
+  if (!el) return;
+  dragFrom = Number(el.dataset.i ?? el.dataset.pos);
+  el.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', '');
+});
+$('items').addEventListener('dragover', e => { if (dragFrom !== null) e.preventDefault(); });
+$('items').addEventListener('drop', e => {
+  if (dragFrom === null) return;
+  e.preventDefault();
+  const el = e.target.closest('[draggable=true]');
+  if (el) {
+    const to = Number(el.dataset.i ?? el.dataset.pos);
+    const arr = toolKey === 'organize' ? pages : files;
+    const [moved] = arr.splice(dragFrom, 1);
+    arr.splice(to, 0, moved);
+  }
+  dragFrom = null;
+  renderItems();
+});
+$('items').addEventListener('dragend', () => { dragFrom = null; document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging')); });
+
+// ---------- Options ----------
+
+function getOptions() {
+  const o = {};
+  $('options').querySelectorAll('[name]').forEach(el => {
+    if (el.type === 'radio') { if (el.checked) o[el.name] = el.value; }
+    else if (el.type === 'checkbox') o[el.name] = el.checked;
+    else if (el.type === 'range' || el.type === 'number') o[el.name] = Number(el.value);
+    else o[el.name] = el.value;
+  });
+  return o;
+}
+
+function onOptionsChange() {
+  const o = getOptions();
+  $('options').querySelectorAll('[data-show]').forEach(el => $(el.dataset.show).textContent = el.value);
+  if (toolKey === 'compress') $('custom-opts').classList.toggle('hidden', o.preset !== 'custom');
+  if (toolKey === 'split') {
+    $('every-opt').classList.toggle('hidden', o.mode !== 'every');
+    $('ranges-opt').classList.toggle('hidden', o.mode !== 'ranges');
+  }
+  if (toolKey === 'rotate' && files.length) renderItems();
+  updateRunButton();
+}
+$('options').addEventListener('input', onOptionsChange);
+$('options').addEventListener('change', onOptionsChange);
+
+function updateRunButton() {
+  const t = tool();
+  if (!t) return;
+  let ok = files.length >= (t.min || 1);
+  if (t.view === 'select') ok = ok && selected.size > 0;
+  if (t.view === 'organize') ok = ok && pages.length > 0;
+  $('run-btn').disabled = !ok;
+}
+
+function showError(msg) {
+  $('error').textContent = msg;
+  $('error').classList.toggle('hidden', !msg);
+  $('error').style.whiteSpace = 'pre-line';
+}
+
+// ---------- Run ----------
+
+$('run-btn').addEventListener('click', async () => {
+  const options = getOptions();
+  if (toolKey === 'organize') options.pages = pages;
+  if (tool().view === 'select') options.selected = [...selected];
+  showError('');
+  $('workspace').classList.add('hidden');
+  $('working').classList.remove('hidden');
+  try {
+    const resp = await fetch('/tools/' + toolKey, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_ids: files.map(f => f.id), options }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Something went wrong');
+    lastResult = data;
+    showResult(data);
+  } catch (e) {
+    $('workspace').classList.remove('hidden');
+    showError(e.message);
+  }
+  $('working').classList.add('hidden');
+});
+
+function showResult(r) {
+  let detail = `<p class="sub">${esc(r.filename)} · ${fmt(r.size)}</p>`;
+  if (toolKey === 'compress') {
+    const pct = Math.round((1 - r.compressed_bytes / r.original_bytes) * 100);
+    detail = `<p class="sub">${fmt(r.original_bytes)} → <b>${fmt(r.compressed_bytes)}</b> <span class="saved">−${pct}%</span></p>`;
+    if (r.files.length > 1) detail += `<table>${r.files.map(f => {
+      const p = Math.round((1 - f.compressed_bytes / f.original_bytes) * 100);
+      return `<tr><td title="${esc(f.name)}">${esc(f.name)}</td><td>${fmt(f.original_bytes)}</td><td>→ ${fmt(f.compressed_bytes)}</td><td class="saved">${p > 0 ? '−' + p + '%' : '—'}</td></tr>`;
+    }).join('')}</table>`;
+  }
+  if (r.parts > 1) detail += `<p class="sub">${r.parts} PDF files in one .zip</p>`;
+  if (r.images > 1) detail += `<p class="sub">${r.images} images in one .zip</p>`;
+
+  $('result').innerHTML = `<div class="result">
+      <div class="big">✓</div><h2>Done!</h2>${detail}
+      <div class="actions">
+        <a class="btn btn-primary" id="download-link" href="/download/${r.job_id}" download="${esc(r.filename)}">Download</a>
+        <button class="btn btn-secondary" id="again-btn">Start over</button>
+        <button class="btn btn-secondary" id="tools-btn">All tools</button>
+      </div></div>`;
+  $('result').classList.remove('hidden');
+  $('again-btn').onclick = () => resetTool();
+  $('tools-btn').onclick = goHome;
+
+  // Desktop window: native webview ignores <a download>, so ask Python to show a
+  // Save dialog. In a regular browser pywebview is absent and the link works as-is.
+  $('download-link').addEventListener('click', async e => {
+    if (!window.pywebview || !window.pywebview.api) return;
+    e.preventDefault();
+    const res = await window.pywebview.api.save_result(r.job_id);
+    if (res.ok) e.target.textContent = 'Saved ✓';
+    else if (!res.cancelled) alert('Could not save: ' + res.error);
+  });
+}
+
+// ---------- Start ----------
+
+renderHome();
+const startTool = location.hash.slice(1);
+if (TOOLS[startTool]) openTool(startTool);
+</script>
+</body>
+</html>
