@@ -24,7 +24,14 @@ To update, re-run the same command.
 
 ### Windows
 
-Download `PDFCompressor-Windows.zip` from the [latest release](https://github.com/Darshan1510/pdf-compressor/releases/latest), unzip it, and run `PDFCompressor.exe`.
+A ready-made Windows download is not available yet. To run it on Windows, use the source code (needs [uv](https://docs.astral.sh/uv/)):
+
+```sh
+git clone https://github.com/Darshan1510/pdf-compressor.git
+cd pdf-compressor
+uv sync
+uv run main.py
+```
 
 ## Troubleshooting (macOS)
 
@@ -185,7 +192,17 @@ make build-windows    # Windows .exe directory in dist/
 make icon             # Regenerate the app icon (assets/make_icon.py)
 ```
 
-Releases are built automatically by GitHub Actions on pushing a `v*` tag.
+### Releasing
+
+Releases are built on a Mac and uploaded with the [GitHub CLI](https://cli.github.com/). This does not need GitHub Actions:
+
+```sh
+make release-mac VERSION=v0.1.1
+```
+
+This builds `PDFCompressor-macOS-arm64.zip` and creates a GitHub release with it. The install script always downloads the latest release.
+
+The GitHub Actions workflow (`.github/workflows/build-release.yml`) also builds the Windows version, but it runs only when started by hand from the Actions tab, and needs Actions billing to be enabled on the account.
 
 ## Limitations
 

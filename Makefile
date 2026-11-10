@@ -3,6 +3,7 @@
 # Usage:
 #   make build-mac        # Build the macOS .app bundle into dist/
 #   make build-windows    # Build the Windows .exe directory into dist/
+#   make release-mac VERSION=v0.1.0   # Build and publish a GitHub release (macOS)
 #   make icon             # Regenerate assets/app.icns and assets/app.ico
 #   make clean            # Remove build artifacts
 
@@ -21,7 +22,7 @@ COLLECT := \
 	--collect-all reportlab \
 	--collect-all img2pdf
 
-.PHONY: build-mac build-windows build-mac-ci build-windows-ci icon clean
+.PHONY: build-mac build-windows build-mac-ci build-windows-ci release-mac icon clean
 
 build-mac:
 	$(PYI) --noconfirm --onedir --windowed \
@@ -44,6 +45,14 @@ build-mac-ci: build-mac
 
 build-windows-ci: build-windows
 	powershell Compress-Archive -Path "dist/$(NAME)" -DestinationPath "$(NAME)-Windows.zip" -Force
+
+# Builds on this Mac and uploads to GitHub Releases with the gh CLI.
+# Does not need GitHub Actions. The tag is created on GitHub if it does not exist.
+release-mac:
+	@test -n "$(VERSION)" || (echo "Usage: make release-mac VERSION=v0.1.0" && exit 1)
+	rm -rf build/ dist/ "$(NAME)-macOS-$(ARCH).zip"
+	$(MAKE) build-mac-ci
+	gh release create "$(VERSION)" "$(NAME)-macOS-$(ARCH).zip" --title "$(VERSION)" --generate-notes
 
 icon:
 	uv run assets/make_icon.py

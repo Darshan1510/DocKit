@@ -1,9 +1,10 @@
 name: Build and Release
 
+# Manual only: GitHub Actions needs account billing to be set up.
+# Releases are normally made locally with `make release-mac VERSION=vX.Y.Z`.
+# To use this workflow: Actions tab -> Build and Release -> Run workflow -> pick a tag.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-latest
             target: build-mac-ci
             artifact_name: PDFCompressor-macOS-arm64.zip
           - os: windows-latest
