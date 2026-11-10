@@ -1,17 +1,21 @@
 #!/bin/sh
-# PDF Compressor — macOS installer
+# DocKit — macOS installer
 #
 # Downloads the latest release, installs it to ~/Downloads, strips the
 # macOS quarantine attribute (so Gatekeeper doesn't block the unsigned app),
 # and launches it.
 #
 # Usage:
-#   curl -LsSf https://raw.githubusercontent.com/Darshan1510/pdf-compressor/main/install.sh | sh
+#   curl -LsSf https://raw.githubusercontent.com/<REPO>/main/install.sh | sh
+#
+# If the GitHub repository is renamed, change REPO below (the only place it lives).
 
 set -eu
 
 REPO="Darshan1510/pdf-compressor"
-APP_NAME="PDFCompressor"
+APP_NAME="DocKit"
+# Earlier releases were called PDFCompressor; the installer replaces that app.
+LEGACY_APP_PATH="$HOME/Downloads/PDFCompressor.app"
 INSTALL_DIR="$HOME/Downloads"
 APP_PATH="$INSTALL_DIR/$APP_NAME.app"
 
@@ -50,7 +54,7 @@ URL="https://github.com/$REPO/releases/latest/download/$ASSET"
 
 # --- download ---
 
-TMP_DIR=$(mktemp -d -t pdf-compressor-install.XXXXXX)
+TMP_DIR=$(mktemp -d -t dockit-install.XXXXXX)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
 say "Installing $APP_NAME for macOS ($ARCH)"
@@ -87,6 +91,11 @@ fi
 if [ -e "$APP_PATH" ]; then
     say "Removing existing $APP_PATH"
     rm -rf "$APP_PATH"
+fi
+
+if [ -d "$LEGACY_APP_PATH" ]; then
+    say "Removing old PDFCompressor.app (now called $APP_NAME)"
+    rm -rf "$LEGACY_APP_PATH"
 fi
 
 say "Moving app to $APP_PATH"

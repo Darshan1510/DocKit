@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDF Tools</title>
+<title>DocKit</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
@@ -20,6 +20,18 @@
   .tool-card .ico { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 10px; }
   .tool-card .name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
   .tool-card .desc { font-size: 13px; color: #666; line-height: 1.35; }
+
+  /* Home: category cards */
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 8px; }
+  .cat-card { background: #fff; border-radius: 16px; padding: 28px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; border: 2px solid transparent; text-align: left; font: inherit; color: inherit; transition: border-color .15s, transform .15s; }
+  .cat-card:hover { border-color: #2563eb; transform: translateY(-3px); }
+  .cat-card .ico { width: 64px; height: 64px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 16px; }
+  .cat-card .name { font-weight: 800; font-size: 20px; margin-bottom: 6px; }
+  .cat-card .desc { font-size: 14px; color: #555; line-height: 1.45; margin-bottom: 12px; }
+  .cat-card .count { font-size: 12px; font-weight: 700; color: #2563eb; }
+  .cat-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 4px; }
+  .cat-head .ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .cat-head h2 { font-size: 1.3rem; }
 
   /* Tool view */
   .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
@@ -113,15 +125,20 @@
   .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
+
+  /* Canvas editors: scan corners, crop box */
+  .editor { margin-top: 12px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+  .editor canvas { display: block; margin: 0 auto; touch-action: none; cursor: crosshair; max-width: 100%; }
+  .editor .grid-bar { justify-content: center; }
 </style>
 </head>
 <body>
 <div class="container">
   <header>
-    <h1>PDF Tools</h1>
-    <button class="btn btn-secondary btn-sm hidden" id="home-btn">← All tools</button>
+    <h1>DocKit</h1>
+    <button class="btn btn-secondary btn-sm hidden" id="home-btn">← Back</button>
   </header>
-  <p class="tagline">Compress, merge, split and convert PDFs. Files stay on this computer.</p>
+  <p class="tagline" id="tagline">PDF, image and scan tools. Files stay on this computer.</p>
 
   <!-- Home -->
   <div id="home"></div>
@@ -161,22 +178,50 @@
 <script>
 // ---------- Tool definitions ----------
 
-const GROUPS = ['Optimize', 'Organize', 'Convert', 'Edit', 'Security'];
+// Home page: pick a category, then a tool. A tool may appear in several categories.
+const CATEGORIES = {
+  pdf: { name: 'PDF', icon: '📄', color: '#fee2e2',
+    desc: 'Compress, merge, split, organize, convert, number, watermark and protect PDF files.',
+    sections: [['Optimize', ['compress']],
+               ['Organize', ['merge', 'split', 'organize', 'rotate', 'remove', 'extract']],
+               ['Convert', ['pdf-to-images', 'images-to-pdf']],
+               ['Edit', ['page-numbers', 'watermark']],
+               ['Security', ['protect', 'unlock']]] },
+  image: { name: 'Image', icon: '🖼️', color: '#cffafe',
+    desc: 'Compress, convert, resize, crop, rotate and watermark JPG, PNG, WEBP and more.',
+    sections: [['Optimize', ['img-compress']],
+               ['Edit', ['img-resize', 'img-crop', 'img-rotate', 'img-watermark']],
+               ['Convert', ['img-convert', 'images-to-pdf']],
+               ['Effects', ['img-scanned']]] },
+  scan: { name: 'Scan', icon: '📷', color: '#fef9c3',
+    desc: 'Turn phone photos of paper into clean scans, or give files a scanned look.',
+    sections: [['Scan documents', ['scan-to-pdf']],
+               ['Scanned look', ['pdf-scanned', 'img-scanned']]] },
+};
 
 const TOOLS = {
-  compress:        { group: 'Optimize', name: 'Compress PDF', icon: '🗜️', color: '#dcfce7', desc: 'Make PDFs smaller. Text stays sharp.', accept: 'pdf', multi: true, view: 'list', action: 'Compress' },
-  merge:           { group: 'Organize', name: 'Merge PDF', icon: '🔗', color: '#fee2e2', desc: 'Combine PDFs in the order you want.', accept: 'pdf', multi: true, min: 2, view: 'list', sortable: true, action: 'Merge PDFs' },
-  split:           { group: 'Organize', name: 'Split PDF', icon: '✂️', color: '#fee2e2', desc: 'Split by page ranges or every N pages.', accept: 'pdf', view: 'grid', action: 'Split PDF' },
-  organize:        { group: 'Organize', name: 'Organize PDF', icon: '🗂️', color: '#fee2e2', desc: 'Drag to reorder, rotate or delete pages.', accept: 'pdf', view: 'organize', action: 'Save changes' },
-  rotate:          { group: 'Organize', name: 'Rotate PDF', icon: '🔄', color: '#fee2e2', desc: 'Rotate all pages at once.', accept: 'pdf', view: 'grid', action: 'Rotate PDF' },
-  remove:          { group: 'Organize', name: 'Remove pages', icon: '🗑️', color: '#fee2e2', desc: 'Click pages to delete them.', accept: 'pdf', view: 'select', action: 'Remove pages' },
-  extract:         { group: 'Organize', name: 'Extract pages', icon: '📤', color: '#fee2e2', desc: 'Pick pages to save as a new PDF.', accept: 'pdf', view: 'select', action: 'Extract pages' },
-  'pdf-to-images': { group: 'Convert', name: 'PDF to JPG', icon: '🖼️', color: '#fef9c3', desc: 'Save every page as a JPG or PNG image.', accept: 'pdf', view: 'grid', action: 'Convert to images' },
-  'images-to-pdf': { group: 'Convert', name: 'JPG to PDF', icon: '📄', color: '#fef9c3', desc: 'Turn photos and images into one PDF.', accept: 'image', multi: true, view: 'list', sortable: true, action: 'Create PDF' },
-  'page-numbers':  { group: 'Edit', name: 'Page numbers', icon: '🔢', color: '#e0e7ff', desc: 'Add page numbers to every page.', accept: 'pdf', view: 'grid', action: 'Add page numbers' },
-  watermark:       { group: 'Edit', name: 'Watermark', icon: '💧', color: '#e0e7ff', desc: 'Stamp text over every page.', accept: 'pdf', view: 'grid', action: 'Add watermark' },
-  protect:         { group: 'Security', name: 'Protect PDF', icon: '🔒', color: '#f3e8ff', desc: 'Encrypt a PDF with a password.', accept: 'pdf', view: 'list', action: 'Protect PDF' },
-  unlock:          { group: 'Security', name: 'Unlock PDF', icon: '🔓', color: '#f3e8ff', desc: 'Remove the password from a PDF.', accept: 'pdf', view: 'list', allowEncrypted: true, action: 'Unlock PDF' },
+  compress:        { name: 'Compress PDF', icon: '🗜️', color: '#dcfce7', desc: 'Make PDFs smaller. Text stays sharp.', accept: 'pdf', multi: true, view: 'list', action: 'Compress' },
+  merge:           { name: 'Merge PDF', icon: '🔗', color: '#fee2e2', desc: 'Combine PDFs in the order you want.', accept: 'pdf', multi: true, min: 2, view: 'list', sortable: true, action: 'Merge PDFs' },
+  split:           { name: 'Split PDF', icon: '✂️', color: '#fee2e2', desc: 'Split by page ranges or every N pages.', accept: 'pdf', view: 'grid', action: 'Split PDF' },
+  organize:        { name: 'Organize PDF', icon: '🗂️', color: '#fee2e2', desc: 'Drag to reorder, rotate or delete pages.', accept: 'pdf', view: 'organize', action: 'Save changes' },
+  rotate:          { name: 'Rotate PDF', icon: '🔄', color: '#fee2e2', desc: 'Rotate all pages at once.', accept: 'pdf', view: 'grid', action: 'Rotate PDF' },
+  remove:          { name: 'Remove pages', icon: '🗑️', color: '#fee2e2', desc: 'Click pages to delete them.', accept: 'pdf', view: 'select', action: 'Remove pages' },
+  extract:         { name: 'Extract pages', icon: '📤', color: '#fee2e2', desc: 'Pick pages to save as a new PDF.', accept: 'pdf', view: 'select', action: 'Extract pages' },
+  'pdf-to-images': { name: 'PDF to JPG', icon: '🖼️', color: '#fef9c3', desc: 'Save every page as a JPG or PNG image.', accept: 'pdf', view: 'grid', action: 'Convert to images' },
+  'images-to-pdf': { name: 'JPG to PDF', icon: '📄', color: '#fef9c3', desc: 'Turn photos and images into one PDF.', accept: 'image', multi: true, view: 'list', sortable: true, action: 'Create PDF' },
+  'scan-to-pdf':   { name: 'Scan to PDF', icon: '📷', color: '#fef9c3', desc: 'Turn photos of paper into a clean scanned PDF.', accept: 'image', multi: true, view: 'list', sortable: true, corners: true, action: 'Scan' },
+  'page-numbers':  { name: 'Page numbers', icon: '🔢', color: '#e0e7ff', desc: 'Add page numbers to every page.', accept: 'pdf', view: 'grid', action: 'Add page numbers' },
+  watermark:       { name: 'Watermark', icon: '💧', color: '#e0e7ff', desc: 'Stamp text over every page.', accept: 'pdf', view: 'grid', action: 'Add watermark' },
+  'pdf-scanned':   { name: 'Make PDF look scanned', icon: '🖨️', color: '#e0e7ff', desc: 'Give a PDF the look of a paper scan.', accept: 'pdf', view: 'grid', action: 'Make it look scanned' },
+  protect:         { name: 'Protect PDF', icon: '🔒', color: '#f3e8ff', desc: 'Encrypt a PDF with a password.', accept: 'pdf', view: 'list', action: 'Protect PDF' },
+  unlock:          { name: 'Unlock PDF', icon: '🔓', color: '#f3e8ff', desc: 'Remove the password from a PDF.', accept: 'pdf', view: 'list', allowEncrypted: true, action: 'Unlock PDF' },
+  'img-compress':  { name: 'Compress image', icon: '🗜️', color: '#cffafe', desc: 'Make JPG, PNG and WEBP files smaller.', accept: 'image', multi: true, view: 'list', action: 'Compress images' },
+  'img-convert':   { name: 'Convert image', icon: '🔁', color: '#cffafe', desc: 'Change images to JPG, PNG, WEBP, GIF, BMP, TIFF or PDF.', accept: 'image', multi: true, view: 'list', sortable: true, action: 'Convert' },
+  'img-resize':    { name: 'Resize image', icon: '📐', color: '#cffafe', desc: 'Change size by percentage or pixels.', accept: 'image', multi: true, view: 'list', action: 'Resize images' },
+  'img-crop':      { name: 'Crop image', icon: '✂️', color: '#cffafe', desc: 'Drag a box to cut out part of an image.', accept: 'image', view: 'crop', action: 'Crop image' },
+  'img-rotate':    { name: 'Rotate image', icon: '🔄', color: '#cffafe', desc: 'Rotate or flip images.', accept: 'image', multi: true, view: 'list', action: 'Rotate images' },
+  'img-scanned':   { name: 'Make image look scanned', icon: '🖨️', color: '#cffafe', desc: 'Give images the look of a paper scan.', accept: 'image', multi: true, view: 'list', sortable: true, action: 'Make it look scanned' },
+  'img-watermark': { name: 'Watermark image', icon: '💧', color: '#cffafe', desc: 'Stamp text over images.', accept: 'image', multi: true, view: 'list', action: 'Add watermark' },
 };
 
 const seg = (name, items, checked) => `<div class="seg">${items.map(([v, t]) =>
@@ -224,6 +269,20 @@ const OPTIONS = {
     <div class="opt"><div class="label">Margin</div>${seg('margin', [['none', 'None'], ['small', 'Small'], ['big', 'Big']], 'small')}
       <p class="hint">Landscape images get landscape pages automatically.</p></div>`,
 
+  'scan-to-pdf': () => `
+    <div class="opt"><div class="label">Look</div>
+      <div class="seg presets" style="grid-auto-flow:row;">
+        ${[['bw', 'Black & white', 'Crisp text, removes shadows'], ['gray', 'Grayscale', 'Keeps pencil and photos'],
+           ['color', 'Color (enhanced)', 'White paper, brighter colors'], ['original', 'Original', 'Only flattened']]
+          .map(([v, t, s]) => `<label><input type="radio" name="mode" value="${v}" ${v === 'bw' ? 'checked' : ''}><span>${t}<small>${s}</small></span></label>`).join('')}
+      </div></div>
+    <div class="opt"><div class="label">Save as</div>${seg('output', [['pdf', 'PDF'], ['jpg', 'JPG'], ['png', 'PNG']], 'pdf')}
+      <p class="hint">JPG or PNG saves each page as an image (several in one .zip).</p></div>
+    <div class="opt" id="page-size-opt"><div class="label">Page size</div>${seg('page_size', [['a4', 'A4'], ['letter', 'Letter'], ['fit', 'Fit page']], 'a4')}</div>
+    <p class="hint" style="margin-bottom:16px;">Page edges are found automatically. Click <b>Adjust</b> on a photo to move the corners yourself.</p>`,
+
+  'pdf-scanned': () => scanLookOptions(false),
+
   'page-numbers': () => `
     <div class="opt"><div class="label">Position</div><div class="positions">
       ${['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(p =>
@@ -254,7 +313,81 @@ const OPTIONS = {
   unlock: () => `
     <div class="opt"><label>Current password</label><input type="password" name="password" autocomplete="current-password">
       <p class="hint">You need to know the password. This tool removes it from the saved copy.</p></div>`,
+
+  'img-compress': () => `
+    <div class="opt"><div class="label">Compression level</div>
+      <div class="seg presets" style="grid-auto-flow:row;">
+        ${[['light', 'Light', 'Quality 85 · PNG stays lossless'], ['balanced', 'Balanced', 'Quality 72 · recommended'],
+           ['strong', 'Strong', 'Quality 55 · smallest file'], ['custom', 'Custom', 'Choose the quality']]
+          .map(([v, t, s]) => `<label><input type="radio" name="preset" value="${v}" ${v === 'balanced' ? 'checked' : ''}><span>${t}<small>${s}</small></span></label>`).join('')}
+      </div></div>
+    <div class="opt hidden" id="custom-opts"><div class="row"><b>Quality</b><span id="quality-v">70</span></div>
+      <input type="range" name="quality" min="10" max="95" step="5" value="70" data-show="quality-v"></div>
+    <div class="opt"><label>Target size (KB, optional)</label><input type="number" name="target_kb" min="0" placeholder="e.g. 200">
+      <p class="hint">Lowers quality, then size, until each file fits.</p></div>
+    <div class="opt"><div class="label">Format</div>${seg('format', [['keep', 'Keep'], ['jpg', 'JPG'], ['webp', 'WEBP']], 'keep')}</div>
+    <div class="opt"><label class="check"><input type="checkbox" name="strip" checked> Remove metadata (EXIF, GPS)</label></div>`,
+
+  'img-convert': () => `
+    <div class="opt"><label>Convert to</label><select name="format">
+      ${[['jpg', 'JPG'], ['png', 'PNG'], ['webp', 'WEBP'], ['gif', 'GIF'], ['bmp', 'BMP'], ['tiff', 'TIFF'], ['pdf', 'PDF (one file)']]
+        .map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+      <p class="hint">JPG and BMP have no transparency: see-through parts become white.</p></div>
+    <div class="opt hidden" id="page-size-opt"><div class="label">Page size</div>${seg('page_size', [['fit', 'Fit image'], ['a4', 'A4'], ['letter', 'Letter']], 'fit')}</div>`,
+
+  'img-resize': () => `
+    <div class="opt"><div class="label">Resize by</div>${seg('mode', [['percent', 'Percentage'], ['pixels', 'Pixels']], 'percent')}</div>
+    <div class="opt" id="percent-opt"><div class="row"><b>Size</b><span><span id="percent-v">50</span>%</span></div>
+      <input type="range" name="percent" min="5" max="200" step="5" value="50" data-show="percent-v"></div>
+    <div id="pixels-opt" class="hidden">
+      <div class="opt"><label>Preset</label><select id="size-preset">
+        <option value="">Custom</option><option value="3840x2160">4K · 3840 × 2160</option><option value="1920x1080">Full HD · 1920 × 1080</option>
+        <option value="1280x720">HD · 1280 × 720</option><option value="1080x1080">Square post · 1080 × 1080</option>
+        <option value="1080x1920">Story · 1080 × 1920</option><option value="800x600">800 × 600</option></select></div>
+      <div class="opt" style="display:flex;gap:8px;">
+        <div style="flex:1"><label class="label" style="font-size:13px;font-weight:600;">Width (px)</label><input type="number" name="width" min="1" value="1920"></div>
+        <div style="flex:1"><label class="label" style="font-size:13px;font-weight:600;">Height (px)</label><input type="number" name="height" min="1" value="1080"></div>
+      </div>
+      <div class="opt"><label class="check"><input type="checkbox" name="keep_aspect" checked> Keep aspect ratio</label>
+        <p class="hint">On: the image fits inside width × height. Leave one box empty to set only the other.</p></div>
+    </div>`,
+
+  'img-crop': () => `
+    <div class="opt"><div class="label">Aspect ratio</div>${seg('aspect', [['free', 'Free'], ['1', '1:1'], ['1.3333', '4:3'], ['1.7778', '16:9'], ['0.75', '3:4']], 'free')}</div>
+    <p class="hint" style="margin-bottom:16px;">Drag on the image to draw the crop area. Drag inside it to move it, or drag a corner to resize.</p>
+    <p class="hint" id="crop-size" style="margin-bottom:16px;"></p>`,
+
+  'img-rotate': () => `
+    <div class="opt"><div class="label">Rotation</div>${seg('angle', [['0', 'None'], ['90', '↻ 90°'], ['180', '180°'], ['270', '↺ 90°']], '90')}</div>
+    <div class="opt"><label class="check"><input type="checkbox" name="flip_h"> Flip horizontally (mirror)</label></div>
+    <div class="opt"><label class="check"><input type="checkbox" name="flip_v"> Flip vertically</label></div>`,
+
+  'img-scanned': () => scanLookOptions(true),
+
+  'img-watermark': () => `
+    <div class="opt"><label>Text</label><input type="text" name="text" value="CONFIDENTIAL" maxlength="80"></div>
+    <div class="opt"><div class="label">Position</div><div class="positions">
+      ${['top-left', 'top-center', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(p =>
+        `<label class="seg"><input type="radio" name="position" value="${p}" ${p === 'center' ? 'checked' : ''}><span>${p === 'center' ? 'center' : p.replace('-', ' ').replace('center', 'middle')}</span></label>`).join('')}
+    </div><div style="margin-top:6px;">${seg('position', [['tiled', 'Tiled (repeat over the image)']], '')}</div></div>
+    <div class="opt"><div class="label">Angle</div>${seg('rotation', [['0', 'Flat'], ['45', 'Diagonal ↗'], ['-45', 'Diagonal ↘']], '0')}</div>
+    <div class="opt"><div class="row"><b>Size</b><span><span id="size-v">8</span>% of image</span></div><input type="range" name="size" min="2" max="30" value="8" data-show="size-v"></div>
+    <div class="opt"><div class="row"><b>Opacity</b><span id="opacity-v">0.3</span></div><input type="range" name="opacity" min="0.05" max="1" step="0.05" value="0.3" data-show="opacity-v"></div>
+    <div class="opt"><label>Color</label><input type="color" name="color" value="#dc2626" style="width:100%;height:34px;border:1px solid #d1d5db;border-radius:6px;"></div>`,
 };
+
+// Shared by "Make PDF look scanned" and "Make image look scanned".
+function scanLookOptions(forImages) {
+  return `
+    <div class="opt"><div class="label">Effect strength</div>${seg('intensity', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], 'medium')}</div>
+    <div class="opt"><div class="label">Color</div>${seg('color', [['gray', 'Grayscale'], ['color', 'Color'], ['bw', 'Black & white']], 'gray')}</div>
+    ${forImages
+      ? `<div class="opt"><div class="label">Save as</div>${seg('format', [['keep', 'Keep'], ['jpg', 'JPG'], ['png', 'PNG'], ['pdf', 'PDF']], 'keep')}
+           <p class="hint">PDF puts all images in one file, in the order shown.</p></div>`
+      : `<div class="opt"><div class="label">Quality</div>${seg('dpi', [['150', '150 DPI'], ['200', '200 DPI'], ['300', '300 DPI']], '200')}
+           <p class="hint">Pages become images, so text can no longer be selected. Higher DPI: sharper, bigger file.</p></div>`}
+    <p class="hint" style="margin-bottom:16px;">Adds a slight tilt, paper tone, blur and grain. The same file always gives the same result.</p>`;
+}
 
 // ---------- State ----------
 
@@ -263,6 +396,9 @@ let files = [];      // uploaded file metadata from the server
 let pages = [];      // organize: [{index, rotate}] ; other grid views: page indexes
 let selected = new Set();
 let lastResult = null;
+let corners = {};    // scan-to-pdf: file id -> 4 [x, y] corners as 0..1 fractions
+let editing = null;  // scan-to-pdf: id of the file whose corners are being edited
+let cropBox = null;  // img-crop: [x, y, w, h] as 0..1 fractions of the image
 
 const $ = id => document.getElementById(id);
 const tool = () => TOOLS[toolKey];
@@ -276,36 +412,71 @@ function fmt(bytes) {
 
 // ---------- Home ----------
 
+let categoryKey = null;   // category being browsed (null = home)
+
+const categoryOf = key => Object.keys(CATEGORIES).find(c =>
+  CATEGORIES[c].sections.some(([, keys]) => keys.includes(key))) || 'pdf';
+
+function showView(view) {
+  $('home').classList.toggle('hidden', view === 'tool');
+  $('tool').classList.toggle('hidden', view !== 'tool');
+  $('home-btn').classList.toggle('hidden', view === 'home');
+  $('tagline').classList.toggle('hidden', view !== 'home');
+}
+
 function renderHome() {
-  $('home').innerHTML = GROUPS.map(g => `
-    <div class="group-title">${g}</div>
-    <div class="tool-grid">${Object.entries(TOOLS).filter(([, t]) => t.group === g).map(([k, t]) => `
-      <button class="tool-card" data-tool="${k}">
-        <div class="ico" style="background:${t.color}">${t.icon}</div>
-        <div class="name">${t.name}</div><div class="desc">${t.desc}</div>
-      </button>`).join('')}</div>`).join('');
+  toolKey = null;
+  categoryKey = null;
+  showView('home');
+  $('home').innerHTML = `<div class="cat-grid">${Object.entries(CATEGORIES).map(([k, c]) => {
+    const n = new Set(c.sections.flatMap(([, keys]) => keys)).size;
+    return `<button class="cat-card" data-category="${k}">
+        <div class="ico" style="background:${c.color}">${c.icon}</div>
+        <div class="name">${c.name}</div><div class="desc">${c.desc}</div>
+        <div class="count">${n} tools →</div>
+      </button>`;
+  }).join('')}</div>`;
+  history.replaceState(null, '', location.pathname);
+}
+
+function showCategory(key) {
+  toolKey = null;
+  categoryKey = key;
+  const c = CATEGORIES[key];
+  showView('category');
+  $('home-btn').textContent = '← Home';
+  $('home').innerHTML = `<div class="cat-head"><div class="ico" style="background:${c.color}">${c.icon}</div>
+      <div><h2>${c.name} tools</h2><p class="tool-desc" style="color:#666;font-size:14px;">${c.desc}</p></div></div>` +
+    c.sections.map(([title, keys]) => `
+      <div class="group-title">${title}</div>
+      <div class="tool-grid">${keys.map(k => { const t = TOOLS[k]; return `
+        <button class="tool-card" data-tool="${k}">
+          <div class="ico" style="background:${t.color}">${t.icon}</div>
+          <div class="name">${t.name}</div><div class="desc">${t.desc}</div>
+        </button>`; }).join('')}</div>`).join('');
+  history.replaceState(null, '', '#' + key);
 }
 
 $('home').addEventListener('click', e => {
+  const cat = e.target.closest('[data-category]');
+  if (cat) return showCategory(cat.dataset.category);
   const card = e.target.closest('[data-tool]');
   if (card) openTool(card.dataset.tool);
 });
 $('home-btn').addEventListener('click', goHome);
 
+// Back: from a tool to its category, from a category to the home page.
 function goHome() {
-  toolKey = null;
-  $('home').classList.remove('hidden');
-  $('tool').classList.add('hidden');
-  $('home-btn').classList.add('hidden');
-  history.replaceState(null, '', '#');
+  if (toolKey) showCategory(categoryKey || categoryOf(toolKey));
+  else renderHome();
 }
 
 function openTool(key) {
   toolKey = key;
   const t = tool();
-  $('home').classList.add('hidden');
-  $('tool').classList.remove('hidden');
-  $('home-btn').classList.remove('hidden');
+  if (!categoryKey) categoryKey = categoryOf(key);
+  showView('tool');
+  $('home-btn').textContent = `← ${CATEGORIES[categoryKey].name} tools`;
   $('tool-ico').textContent = t.icon;
   $('tool-ico').style.background = t.color;
   $('tool-title').textContent = t.name;
@@ -313,7 +484,7 @@ function openTool(key) {
   $('run-btn').textContent = t.action;
   $('options').innerHTML = OPTIONS[key]();
   const input = $('file-input');
-  input.accept = t.accept === 'pdf' ? 'application/pdf,.pdf' : 'image/*';
+  input.accept = t.accept === 'pdf' ? 'application/pdf,.pdf' : 'image/*,.heic,.heif';
   input.multiple = !!t.multi;
   history.replaceState(null, '', '#' + key);
   resetTool();
@@ -321,6 +492,7 @@ function openTool(key) {
 
 function resetTool() {
   files = []; pages = []; selected = new Set(); lastResult = null;
+  corners = {}; editing = null; cropBox = null;
   $('workspace').classList.remove('hidden');
   $('result').classList.add('hidden');
   $('working').classList.add('hidden');
@@ -342,7 +514,7 @@ async function uploadFiles(list) {
   const t = tool();
   let chosen = [...list].filter(f => t.accept === 'pdf'
     ? (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
-    : (f.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|tiff?|webp)$/i.test(f.name)));
+    : (f.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|tiff?|webp|heic|heif)$/i.test(f.name)));
   if (!chosen.length) { showError(t.accept === 'pdf' ? 'Please choose PDF files.' : 'Please choose image files.'); return; }
   if (!t.multi) chosen = chosen.slice(0, 1);
 
@@ -365,6 +537,7 @@ async function uploadFiles(list) {
       const n = files[0].pages || 0;
       pages = toolKey === 'organize' ? [...Array(n).keys()].map(i => ({ index: i, rotate: 0 })) : [...Array(n).keys()];
       selected = new Set();
+      cropBox = null;
     }
     showError(errors.join('\n'));
   } catch (e) {
@@ -384,15 +557,22 @@ function renderItems() {
   $('drop-text').textContent = has
     ? (t.multi ? '+ Add more files' : 'Choose a different file')
     : (t.accept === 'pdf' ? `Drag & drop PDF file${t.multi ? 's' : ''} here, or click to select` : 'Drag & drop images here, or click to select');
-  $('drop-hint').textContent = has ? '' : (t.accept === 'pdf' ? '' : 'JPG, PNG, GIF, BMP, TIFF, WEBP');
+  $('drop-hint').textContent = has ? '' : (t.accept === 'pdf' ? '' : 'JPG, PNG, GIF, BMP, TIFF, WEBP, HEIC');
 
   let html = '';
-  if (has && (t.view === 'list' || t.multi)) {
+  const preview = toolKey === 'img-rotate' ? `style="transform:${rotateCss()}"` : '';
+  if (has && t.view === 'crop') {
+    const f = files[0];
+    html = `<div class="grid-bar"><span>${esc(f.name)} · ${f.width} × ${f.height} px</span><span style="flex:1"></span>
+      <button class="btn btn-secondary btn-sm" data-act="change-file">Change file</button></div>
+      <div class="editor"><canvas id="editor-canvas"></canvas></div>`;
+  } else if (has && (t.view === 'list' || t.multi)) {
     html = `<ul class="files" id="file-list">${files.map((f, i) => `
       <li class="file" draggable="${!!t.sortable}" data-i="${i}">
-        ${f.encrypted ? '<div style="width:44px;text-align:center;font-size:22px;">🔒</div>' : `<img src="/thumb/${f.id}/0?width=88" alt="">`}
+        ${f.encrypted ? '<div style="width:44px;text-align:center;font-size:22px;">🔒</div>' : `<img src="/thumb/${f.id}/0?width=88" alt="" ${preview}>`}
         <div class="fname"><div title="${esc(f.name)}">${esc(f.name)}</div>
-          <div class="meta">${fmt(f.size)}${f.pages ? ` · ${f.pages} page${f.pages > 1 ? 's' : ''}` : ''}${f.encrypted ? ' · password protected' : ''}</div></div>
+          <div class="meta">${fmt(f.size)}${f.pages ? ` · ${f.pages} page${f.pages > 1 ? 's' : ''}` : ''}${f.width ? ` · ${f.width} × ${f.height}` : ''}${f.encrypted ? ' · password protected' : ''}${corners[f.id] ? ' · corners set' : ''}</div></div>
+        ${t.corners ? `<button class="btn btn-secondary btn-sm" data-act="corners" data-i="${i}">${editing === f.id ? 'Done' : 'Adjust'}</button>` : ''}
         ${t.sortable ? `<button class="icon-btn" data-act="up" data-i="${i}" title="Move up">↑</button>
                         <button class="icon-btn" data-act="down" data-i="${i}" title="Move down">↓</button>` : ''}
         <button class="icon-btn danger" data-act="remove-file" data-i="${i}" title="Remove">✕</button>
@@ -400,8 +580,21 @@ function renderItems() {
   } else if (has) {
     html = renderGrid();
   }
+  if (editing && t.corners) html += `<div class="editor"><canvas id="editor-canvas"></canvas>
+      <p class="hint" style="text-align:center;margin-top:8px;" id="editor-hint">Drag the 4 corners onto the corners of the page.</p>
+      <div class="grid-bar"><button class="btn btn-secondary btn-sm" data-act="corners-detect">Detect again</button>
+        <button class="btn btn-secondary btn-sm" data-act="corners-full">Whole photo</button>
+        <button class="btn btn-primary btn-sm" data-act="corners-done">Done</button></div></div>`;
   $('items').innerHTML = html;
+  if (has && t.view === 'crop') mountEditor(files[0], 'crop');
+  if (editing && t.corners) mountEditor(files.find(f => f.id === editing), 'corners');
   updateRunButton();
+}
+
+// Flip first, then rotate: the same order as the server.
+function rotateCss() {
+  const o = getOptions();
+  return `rotate(${Number(o.angle || 0)}deg) scale(${o.flip_h ? -1 : 1}, ${o.flip_v ? -1 : 1})`;
 }
 
 function renderGrid() {
@@ -439,7 +632,11 @@ $('items').addEventListener('click', e => {
     switch (btn.dataset.act) {
       case 'up': if (i > 0) [files[i - 1], files[i]] = [files[i], files[i - 1]]; break;
       case 'down': if (i < files.length - 1) [files[i + 1], files[i]] = [files[i], files[i + 1]]; break;
-      case 'remove-file': files.splice(i, 1); if (!tool().multi) pages = []; break;
+      case 'remove-file': if (files[i].id === editing) editing = null; delete corners[files[i].id]; files.splice(i, 1); if (!tool().multi) pages = []; break;
+      case 'corners': editCorners(files[i].id); return;
+      case 'corners-detect': delete corners[editing]; editCorners(editing, true); return;
+      case 'corners-full': corners[editing] = [[0, 0], [1, 0], [1, 1], [0, 1]]; break;
+      case 'corners-done': editing = null; break;
       case 'rot': pages[pos].rotate = (pages[pos].rotate + 90) % 360; break;
       case 'del': pages.splice(pos, 1); break;
       case 'rot-all': pages.forEach(p => p.rotate = (p.rotate + 90) % 360); break;
@@ -485,6 +682,154 @@ $('items').addEventListener('drop', e => {
 });
 $('items').addEventListener('dragend', () => { dragFrom = null; document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging')); });
 
+// ---------- Canvas editors: scan corners, crop box ----------
+
+let editorState = null;  // {kind, canvas, img, rect: image area on the canvas, drag, aspect}
+
+async function editCorners(id, redetect = false) {
+  editing = id;
+  if (!corners[id] || redetect) {
+    try {
+      const resp = await fetch('/scan/detect/' + id);
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Could not read this photo');
+      corners[id] = data.corners;
+      renderItems();
+      if (!data.found && $('editor-hint')) $('editor-hint').textContent = 'No page edges found. Drag the 4 corners onto the corners of the page.';
+      return;
+    } catch (e) { showError(e.message); editing = null; }
+  }
+  renderItems();
+}
+
+const aspectRatio = () => { const a = getOptions().aspect; return a && a !== 'free' ? Number(a) : null; };
+
+function mountEditor(f, kind) {
+  const canvas = $('editor-canvas');
+  if (!canvas || !f) return;
+  const img = new Image();
+  img.onload = () => {
+    const maxW = Math.min(canvas.parentElement.clientWidth - 24, 640), maxH = 460;
+    const s = Math.min(maxW / img.width, maxH / img.height);
+    const w = Math.round(img.width * s), h = Math.round(img.height * s), pad = 10;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = (w + pad * 2) * dpr; canvas.height = (h + pad * 2) * dpr;
+    canvas.style.width = (w + pad * 2) + 'px'; canvas.style.height = (h + pad * 2) + 'px';
+    editorState = { kind, canvas, img, f, rect: { x: pad, y: pad, w, h }, drag: null, aspect: aspectRatio() };
+    if (kind === 'crop' && !cropBox) cropBox = defaultCrop();
+    drawEditor();
+    updateRunButton();
+  };
+  img.src = `/thumb/${f.id}/0?width=800`;
+}
+
+// Largest centered box with the chosen aspect ratio (whole image when Free).
+function defaultCrop() {
+  const a = aspectRatio(), f = editorState.f;
+  if (!a) return [0, 0, 1, 1];
+  let w = f.width, h = w / a;
+  if (h > f.height) { h = f.height; w = h * a; }
+  return [(1 - w / f.width) / 2, (1 - h / f.height) / 2, w / f.width, h / f.height];
+}
+
+function drawEditor() {
+  const { canvas, img, rect, kind } = editorState;
+  const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+  const pts = editorPoints();
+  // Dim everything outside the selected area.
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.45)';
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.closePath();
+  ctx.fill('evenodd');
+  ctx.restore();
+  ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2;
+  ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.stroke();
+  pts.forEach(([x, y]) => {
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+  });
+  if (kind === 'crop' && cropBox && $('crop-size')) {
+    const f = editorState.f;
+    $('crop-size').textContent = `Crop: ${Math.round(cropBox[2] * f.width)} × ${Math.round(cropBox[3] * f.height)} px`;
+  }
+}
+
+// The 4 handle positions in canvas pixels (TL, TR, BR, BL).
+function editorPoints() {
+  const { rect, kind, f } = editorState;
+  const toCanvas = ([u, v]) => [rect.x + u * rect.w, rect.y + v * rect.h];
+  if (kind === 'corners') return (corners[f.id] || [[0, 0], [1, 0], [1, 1], [0, 1]]).map(toCanvas);
+  const [x, y, w, h] = cropBox || [0, 0, 1, 1];
+  return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(toCanvas);
+}
+
+function editorPos(e) {
+  const { canvas, rect } = editorState, b = canvas.getBoundingClientRect();
+  const u = (e.clientX - b.left - rect.x) / rect.w, v = (e.clientY - b.top - rect.y) / rect.h;
+  return [Math.min(1, Math.max(0, u)), Math.min(1, Math.max(0, v))];
+}
+
+// Crop box from a fixed corner and the pointer, keeping the aspect ratio (in image pixels).
+function cropFrom([fu, fv], [u, v]) {
+  const f = editorState.f, a = editorState.aspect;
+  let w = Math.abs(u - fu) * f.width, h = Math.abs(v - fv) * f.height;
+  if (a) {
+    if (w / h > a) w = h * a; else h = w / a;
+    const maxW = (u < fu ? fu : 1 - fu) * f.width, maxH = (v < fv ? fv : 1 - fv) * f.height;
+    if (w > maxW) { w = maxW; h = w / a; }
+    if (h > maxH) { h = maxH; w = h * a; }
+  }
+  w /= f.width; h /= f.height;
+  return [u < fu ? fu - w : fu, v < fv ? fv - h : fv, w, h];
+}
+
+$('items').addEventListener('pointerdown', e => {
+  if (e.target.id !== 'editor-canvas' || !editorState) return;
+  const b = editorState.canvas.getBoundingClientRect();
+  const px = e.clientX - b.left, py = e.clientY - b.top;
+  const pts = editorPoints();
+  const near = pts.findIndex(([x, y]) => Math.hypot(x - px, y - py) < 14);
+  const pos = editorPos(e);
+  if (editorState.kind === 'corners') {
+    if (near < 0) return;
+    editorState.drag = { handle: near };
+  } else if (near >= 0) {
+    editorState.drag = { fixed: [cropBox[0] + (near === 0 || near === 3 ? cropBox[2] : 0), cropBox[1] + (near < 2 ? cropBox[3] : 0)] };
+  } else if (cropBox && pos[0] > cropBox[0] && pos[0] < cropBox[0] + cropBox[2] && pos[1] > cropBox[1] && pos[1] < cropBox[1] + cropBox[3]) {
+    editorState.drag = { move: pos, start: [...cropBox] };
+  } else {
+    editorState.drag = { fixed: pos };
+  }
+  editorState.canvas.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+$('items').addEventListener('pointermove', e => {
+  const d = editorState && editorState.drag;
+  if (!d || e.target.id !== 'editor-canvas') return;
+  const pos = editorPos(e);
+  if (d.handle !== undefined) corners[editorState.f.id][d.handle] = pos;
+  else if (d.move) {
+    const [x, y, w, h] = d.start;
+    cropBox = [Math.min(1 - w, Math.max(0, x + pos[0] - d.move[0])), Math.min(1 - h, Math.max(0, y + pos[1] - d.move[1])), w, h];
+  } else cropBox = cropFrom(d.fixed, pos);
+  drawEditor();
+});
+
+$('items').addEventListener('pointerup', () => {
+  if (!editorState || !editorState.drag) return;
+  editorState.drag = null;
+  if (editorState.kind === 'crop' && cropBox && (cropBox[2] < 0.005 || cropBox[3] < 0.005)) cropBox = defaultCrop();
+  drawEditor();
+  updateRunButton();
+});
+
 // ---------- Options ----------
 
 function getOptions() {
@@ -507,8 +852,26 @@ function onOptionsChange() {
     $('ranges-opt').classList.toggle('hidden', o.mode !== 'ranges');
   }
   if (toolKey === 'rotate' && files.length) renderItems();
+  if (toolKey === 'img-compress') $('custom-opts').classList.toggle('hidden', o.preset !== 'custom');
+  if (toolKey === 'img-convert') $('page-size-opt').classList.toggle('hidden', o.format !== 'pdf');
+  if (toolKey === 'scan-to-pdf') $('page-size-opt').classList.toggle('hidden', o.output !== 'pdf');
+  if (toolKey === 'img-resize') {
+    $('percent-opt').classList.toggle('hidden', o.mode !== 'percent');
+    $('pixels-opt').classList.toggle('hidden', o.mode !== 'pixels');
+  }
+  if (toolKey === 'img-rotate') document.querySelectorAll('#file-list img').forEach(img => img.style.transform = rotateCss());
+  if (toolKey === 'img-crop' && editorState && editorState.kind === 'crop') {
+    if (editorState.aspect !== aspectRatio()) { cropBox = null; mountEditor(files[0], 'crop'); }
+  }
   updateRunButton();
 }
+
+$('options').addEventListener('change', e => {
+  if (e.target.id !== 'size-preset' || !e.target.value) return;
+  const [w, h] = e.target.value.split('x');
+  $('options').querySelector('[name=width]').value = w;
+  $('options').querySelector('[name=height]').value = h;
+});
 $('options').addEventListener('input', onOptionsChange);
 $('options').addEventListener('change', onOptionsChange);
 
@@ -518,6 +881,7 @@ function updateRunButton() {
   let ok = files.length >= (t.min || 1);
   if (t.view === 'select') ok = ok && selected.size > 0;
   if (t.view === 'organize') ok = ok && pages.length > 0;
+  if (t.view === 'crop') ok = ok && !!cropBox && cropBox[2] > 0 && cropBox[3] > 0;
   $('run-btn').disabled = !ok;
 }
 
@@ -533,6 +897,11 @@ $('run-btn').addEventListener('click', async () => {
   const options = getOptions();
   if (toolKey === 'organize') options.pages = pages;
   if (tool().view === 'select') options.selected = [...selected];
+  if (tool().corners) options.corners = corners;
+  if (toolKey === 'img-crop') {
+    const f = files[0];
+    options.box = [cropBox[0] * f.width, cropBox[1] * f.height, cropBox[2] * f.width, cropBox[3] * f.height].map(Math.round);
+  }
   showError('');
   $('workspace').classList.add('hidden');
   $('working').classList.remove('hidden');
@@ -555,9 +924,9 @@ $('run-btn').addEventListener('click', async () => {
 
 function showResult(r) {
   let detail = `<p class="sub">${esc(r.filename)} · ${fmt(r.size)}</p>`;
-  if (toolKey === 'compress') {
+  if (toolKey === 'compress' || toolKey === 'img-compress') {
     const pct = Math.round((1 - r.compressed_bytes / r.original_bytes) * 100);
-    detail = `<p class="sub">${fmt(r.original_bytes)} → <b>${fmt(r.compressed_bytes)}</b> <span class="saved">−${pct}%</span></p>`;
+    detail = `<p class="sub">${fmt(r.original_bytes)} → <b>${fmt(r.compressed_bytes)}</b> ${pct > 0 ? `<span class="saved">−${pct}%</span>` : '(no smaller)'}</p>`;
     if (r.files.length > 1) detail += `<table>${r.files.map(f => {
       const p = Math.round((1 - f.compressed_bytes / f.original_bytes) * 100);
       return `<tr><td title="${esc(f.name)}">${esc(f.name)}</td><td>${fmt(f.original_bytes)}</td><td>→ ${fmt(f.compressed_bytes)}</td><td class="saved">${p > 0 ? '−' + p + '%' : '—'}</td></tr>`;
@@ -565,13 +934,14 @@ function showResult(r) {
   }
   if (r.parts > 1) detail += `<p class="sub">${r.parts} PDF files in one .zip</p>`;
   if (r.images > 1) detail += `<p class="sub">${r.images} images in one .zip</p>`;
+  if (r.not_found && r.not_found.length) detail += `<p class="sub" style="color:#b45309;margin-top:8px;">No page edges found in ${r.not_found.map(esc).join(', ')}: the whole photo was used. Use <b>Adjust</b> to set the corners.</p>`;
 
   $('result').innerHTML = `<div class="result">
       <div class="big">✓</div><h2>Done!</h2>${detail}
       <div class="actions">
         <a class="btn btn-primary" id="download-link" href="/download/${r.job_id}" download="${esc(r.filename)}">Download</a>
         <button class="btn btn-secondary" id="again-btn">Start over</button>
-        <button class="btn btn-secondary" id="tools-btn">All tools</button>
+        <button class="btn btn-secondary" id="tools-btn">More tools</button>
       </div></div>`;
   $('result').classList.remove('hidden');
   $('again-btn').onclick = () => resetTool();
@@ -590,9 +960,11 @@ function showResult(r) {
 
 // ---------- Start ----------
 
-renderHome();
-const startTool = location.hash.slice(1);
-if (TOOLS[startTool]) openTool(startTool);
+// Deep links: #pdf / #image / #scan open a category, #<tool> opens a tool.
+const start = location.hash.slice(1);
+if (CATEGORIES[start]) showCategory(start);
+else if (TOOLS[start]) openTool(start);
+else renderHome();
 </script>
 </body>
 </html>

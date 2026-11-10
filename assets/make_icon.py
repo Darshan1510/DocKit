@@ -64,26 +64,30 @@ def draw_icon() -> Image.Image:
     d.polygon([(dx0, dy0), (dx1 - fold, dy0), (dx1, dy0 + fold), (dx1, dy1), (dx0, dy1)], fill="white")
     d.polygon([(dx1 - fold, dy0), (dx1 - fold, dy0 + fold), (dx1, dy0 + fold)], fill=(191, 208, 245))
 
-    # "PDF" label on the document
-    f = font(118)
-    d.text(((dx0 + dx1) / 2, 355), "PDF", font=f, fill=(29, 78, 216), anchor="mm")
+    # Picture on the document (DocKit handles images as well as PDFs)
+    px0, py0, px1, py1 = dx0 + 55, 300, dx1 - 55, 470
+    pic_mask = Image.new("L", (SIZE, SIZE), 0)
+    ImageDraw.Draw(pic_mask).rounded_rectangle((px0, py0, px1, py1), 18, fill=255)
+    pic = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    p = ImageDraw.Draw(pic)
+    p.rectangle((px0, py0, px1, py1), fill=(219, 234, 254))
+    p.ellipse((px1 - 95, py0 + 25, px1 - 45, py0 + 75), fill=(250, 204, 21))  # sun
+    p.polygon([(px0, py1), (px0 + 95, py0 + 70), (px0 + 175, py1)], fill=(59, 130, 246))  # mountains
+    p.polygon([(px0 + 110, py1), (px0 + 205, py0 + 95), (px1, py1)], fill=(29, 78, 216))
+    icon.paste(pic, (0, 0), pic_mask)
 
     # Text lines
-    for i, y in enumerate((455, 500, 545)):
-        x_end = dx1 - 70 - (60 if i == 2 else 0)
-        d.rounded_rectangle((dx0 + 60, y - 9, x_end, y + 9), 9, fill=(203, 213, 225))
+    for i, y in enumerate((530, 575, 620)):
+        x_end = dx1 - 55 - (80 if i == 2 else 0)
+        d.rounded_rectangle((dx0 + 55, y - 10, x_end, y + 10), 10, fill=(203, 213, 225))
 
-    # Compress arrows: two arrows pointing at each other below the lines
-    cy, color = 635, (220, 38, 38)
-    for direction in (1, -1):
-        tip_x = 512 - direction * 22
-        tail_x = tip_x - direction * 120
-        d.rounded_rectangle((min(tip_x, tail_x) + (0 if direction == 1 else 30), cy - 14,
-                             max(tip_x, tail_x) - (30 if direction == 1 else 0), cy + 14), 7, fill=color)
-        d.polygon([(tip_x, cy), (tip_x - direction * 55, cy - 42), (tip_x - direction * 55, cy + 42)], fill=color)
+    # Check mark badge: "done" for any file task
+    bx, by, r = dx1 - 20, dy1 - 35, 62
+    d.ellipse((bx - r, by - r, bx + r, by + r), fill=(22, 163, 74), outline="white", width=10)
+    d.line([(bx - 28, by + 2), (bx - 6, by + 24), (bx + 30, by - 22)], fill="white", width=16, joint="curve")
 
     # Name banner at the bottom of the tile
-    d.text((SIZE / 2, 812), "PDF TOOLS", font=font(84), fill="white", anchor="mm")
+    d.text((SIZE / 2, 812), "DocKit", font=font(84), fill="white", anchor="mm")
     return icon
 
 

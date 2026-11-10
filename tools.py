@@ -1,4 +1,4 @@
-"""PDF tools: merge, split, organize, rotate, convert, number, watermark, protect.
+"""PDF tools for DocKit: merge, split, organize, rotate, convert, number, watermark, protect.
 
 Every function reads input files from disk and writes output files to disk.
 User-facing problems raise ToolError with a message that is safe to show.
@@ -21,9 +21,18 @@ from reportlab.pdfgen import canvas
 # pdfium is not thread-safe; FastAPI runs sync endpoints in a thread pool.
 PDFIUM_LOCK = threading.Lock()
 
+MAX_PIXELS = 100_000_000
+# Pillow refuses images over 2x this as decompression bombs; check_pixels() catches the rest.
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+
 
 class ToolError(Exception):
     pass
+
+
+def check_pixels(width: int, height: int, name: str) -> None:
+    if width * height > MAX_PIXELS:
+        raise ToolError(f"{name} is too large (over {MAX_PIXELS // 1_000_000} megapixels).")
 
 
 # --- Helpers ---
@@ -214,8 +223,11 @@ def images_to_pdf(paths: list[Path], page_size: str, margin: str, workdir: Path,
     for i, p in enumerate(paths):
         try:
             img = Image.open(p)
+            check_pixels(*img.size, p.name)
             fmt = img.format
             img = ImageOps.exif_transpose(img)
+        except ToolError:
+            raise
         except Exception:
             raise ToolError(f"Could not read image {p.name}.")
         if fmt == "JPEG" and img.mode in ("RGB", "L", "CMYK"):
@@ -227,7 +239,7 @@ def images_to_pdf(paths: list[Path], page_size: str, margin: str, workdir: Path,
             bg = Image.new("RGB", img.size, "white")
             bg.paste(img, mask=img.split()[-1])
             img = bg
-        elif img.mode not in ("RGB", "L"):
+        elif img.mode not in ("RGB", "L", "1"):
             img = img.convert("RGB")
         dest = workdir / f"img-{i}.png"
         img.save(dest, "PNG")

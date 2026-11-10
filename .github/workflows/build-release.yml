@@ -16,10 +16,10 @@ jobs:
         include:
           - os: macos-latest
             target: build-mac-ci
-            artifact_name: PDFCompressor-macOS-arm64.zip
+            artifact_name: DocKit-macOS-arm64.zip
           - os: windows-latest
             target: build-windows-ci
-            artifact_name: PDFCompressor-Windows.zip
+            artifact_name: DocKit-Windows.zip
 
     steps:
       - name: Checkout Code
@@ -60,8 +60,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            PDFCompressor-macOS-arm64.zip
-            PDFCompressor-Windows.zip
+            DocKit-macOS-arm64.zip
+            DocKit-Windows.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

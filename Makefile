@@ -1,4 +1,4 @@
-# Build targets for PDF Compressor (PDF Tools).
+# Build targets for DocKit.
 #
 # Usage:
 #   make build-mac        # Build the macOS .app bundle into dist/
@@ -8,7 +8,7 @@
 #   make clean            # Remove build artifacts
 
 PYI := uv run pyinstaller
-NAME := PDFCompressor
+NAME := DocKit
 ENTRY := main.py
 ARCH := $(shell uname -m)
 
@@ -20,7 +20,8 @@ COLLECT := \
 	--collect-all pypdfium2 \
 	--collect-all pypdfium2_raw \
 	--collect-all reportlab \
-	--collect-all img2pdf
+	--collect-all img2pdf \
+	--collect-all cv2
 
 .PHONY: build-mac build-windows build-mac-ci build-windows-ci release-mac icon clean
 
