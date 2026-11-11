@@ -5,7 +5,7 @@
 DocKit is a small desktop app with everyday tools for **PDFs**, **images** and **scans**, similar to free websites such as iLovePDF or iLoveIMG, but everything runs on your computer. Files are never uploaded anywhere.
 
 - **PDF:** compress, merge, split, organize, rotate, remove or extract pages, convert to and from images, page numbers, watermark, protect and unlock.
-- **Image:** compress, convert (JPG, PNG, WEBP, GIF, BMP, TIFF, PDF, HEIC input), resize, crop, rotate/flip and watermark.
+- **Image:** compress, convert (JPG, PNG, WEBP, GIF, BMP, TIFF, PDF, HEIC input), resize, crop, rotate/flip, add a watermark and remove a watermark.
 - **Scan:** turn phone photos of paper into clean scans, or give PDFs and images a scanned look.
 
 > DocKit was first released as "PDF Compressor". The installer replaces the old `PDFCompressor.app` automatically.
@@ -195,6 +195,12 @@ The **Image** tools accept JPG, PNG, WEBP, GIF, BMP, TIFF and, on macOS, HEIC/HE
 2. Enter the text, then choose the position (one of 9 places, or **Tiled** to repeat it over the whole image), the angle, the size (as a % of the image), the opacity and the color.
 3. Click **Add watermark**.
 
+**Remove watermark**
+1. Add one image.
+2. Paint over the watermark, logo or text with the brush. Cover a little past its edges. Use **Undo** or **Clear** to fix mistakes, and the **Brush size** slider to change the brush.
+3. Choose a **Quality boost**: **Sharpen** (recommended), **Upscale 2×** (double the size, then sharpen) or **None**.
+4. Click **Remove watermark**. The painted area is filled in from its surroundings, and the result is saved at maximum quality.
+
 ## Tools
 
 | Category | Tool | What it does |
@@ -218,6 +224,7 @@ The **Image** tools accept JPG, PNG, WEBP, GIF, BMP, TIFF and, on macOS, HEIC/HE
 | Image | Crop image | Drag a box; Free, 1:1, 4:3, 16:9 or 3:4 |
 | Image | Rotate image | 90°, 180°, 270°, flip horizontally or vertically |
 | Image | Watermark image | Text in 9 positions or tiled, angle, size, opacity, color |
+| Image | Remove watermark | Paint over a watermark to fill it in; optional sharpen or 2× upscale |
 | Scan | Scan to PDF | Photos of paper to a flat, clean scan (B&W, gray, color), as PDF or JPG/PNG |
 | Scan | Make PDF look scanned | Tilt, paper tone, blur and grain; 150/200/300 DPI |
 | Scan, Image | Make image look scanned | Same effect as for PDFs; images or one PDF |
@@ -300,6 +307,7 @@ Rename the repository on GitHub (Settings → Repository name), update those two
 - HEIC/HEIF photos open on macOS only.
 - Images over 100 megapixels are refused. Animated GIF/WEBP files use only the first frame.
 - Image watermark text uses a built-in Latin font; other scripts may show as boxes.
+- Remove watermark fills the painted area with texture copied from nearby. It works best on plain, gradient or repeating backgrounds. Over faces, text or detailed patterns, the fill can show visible joins. Large painted areas on big photos can take 10 to 20 seconds. Upscale 2× enlarges with resampling, so it does not add real new detail.
 - BMP and GIF files cannot be made much smaller in their own format; choose JPG or WEBP in Compress image.
 
 ## License

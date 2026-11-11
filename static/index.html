@@ -120,6 +120,12 @@
   .result td { padding: 4px 10px; text-align: right; font-variant-numeric: tabular-nums; }
   .result td:first-child { text-align: left; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .saved { color: #16a34a; font-weight: 700; }
+  .preview { margin: 16px auto 0; max-width: 100%; display: inline-block; position: relative; line-height: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.2); background: #fff; }
+  .preview img { display: block; max-width: 100%; max-height: 520px; }
+  .preview .before { position: absolute; inset: 0; }
+  .preview .before img { width: 100%; height: 100%; max-height: none; }
+  .preview .tag { position: absolute; top: 8px; padding: 3px 8px; border-radius: 4px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 1.4; }
+  .compare { width: min(100%, 520px); margin: 10px auto 0; display: block; }
 
   .loading { text-align: center; padding: 40px; color: #666; }
   .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -188,9 +194,9 @@ const CATEGORIES = {
                ['Edit', ['page-numbers', 'watermark']],
                ['Security', ['protect', 'unlock']]] },
   image: { name: 'Image', icon: '🖼️', color: '#cffafe',
-    desc: 'Compress, convert, resize, crop, rotate and watermark JPG, PNG, WEBP and more.',
+    desc: 'Compress, convert, resize, crop, rotate, add or remove watermarks on JPG, PNG, WEBP and more.',
     sections: [['Optimize', ['img-compress']],
-               ['Edit', ['img-resize', 'img-crop', 'img-rotate', 'img-watermark']],
+               ['Edit', ['img-resize', 'img-crop', 'img-rotate', 'img-watermark', 'img-unwatermark']],
                ['Convert', ['img-convert', 'images-to-pdf']],
                ['Effects', ['img-scanned']]] },
   scan: { name: 'Scan', icon: '📷', color: '#fef9c3',
@@ -222,6 +228,7 @@ const TOOLS = {
   'img-rotate':    { name: 'Rotate image', icon: '🔄', color: '#cffafe', desc: 'Rotate or flip images.', accept: 'image', multi: true, view: 'list', action: 'Rotate images' },
   'img-scanned':   { name: 'Make image look scanned', icon: '🖨️', color: '#cffafe', desc: 'Give images the look of a paper scan.', accept: 'image', multi: true, view: 'list', sortable: true, action: 'Make it look scanned' },
   'img-watermark': { name: 'Watermark image', icon: '💧', color: '#cffafe', desc: 'Stamp text over images.', accept: 'image', multi: true, view: 'list', action: 'Add watermark' },
+  'img-unwatermark': { name: 'Remove watermark', icon: '🧽', color: '#cffafe', desc: 'Paint over a watermark, logo or text to erase it.', accept: 'image', view: 'mask', action: 'Remove watermark' },
 };
 
 const seg = (name, items, checked) => `<div class="seg">${items.map(([v, t]) =>
@@ -238,9 +245,9 @@ const OPTIONS = {
     <div id="custom-opts" class="hidden">
       <div class="opt"><div class="row"><b>Image DPI</b><span id="dpi-v">144</span></div>
         <input type="range" name="dpi" min="50" max="300" step="10" value="144" data-show="dpi-v"></div>
-      <div class="opt"><div class="row"><b>JPEG quality</b><span id="quality-v">65</span></div>
+      <div class="opt"><div class="row"><b>Image quality</b><span id="quality-v">65</span></div>
         <input type="range" name="quality" min="10" max="95" step="5" value="65" data-show="quality-v">
-        <p class="hint">72–96 DPI: screen · 150: most uses · 300: print</p></div>
+        <p class="hint">Photos inside the PDF are saved again as JPEG at this quality. Text and drawings are not changed.<br>72–96 DPI: screen · 150: most uses · 300: print</p></div>
     </div>
     <div class="opt"><label class="check"><input type="checkbox" name="grayscale"> Convert images to grayscale</label></div>`,
 
@@ -364,6 +371,18 @@ const OPTIONS = {
 
   'img-scanned': () => scanLookOptions(true),
 
+  'img-unwatermark': () => `
+    <div class="opt"><div class="row"><b>Brush size</b><span><span id="brush-v">4</span>% of image</span></div>
+      <input type="range" name="brush" min="1" max="15" value="4" data-show="brush-v"></div>
+    <div class="opt"><div class="label">Quality boost</div>
+      <div class="seg presets" style="grid-auto-flow:row;">
+        ${[['sharpen', 'Sharpen', 'Crisper details · recommended'], ['upscale', 'Upscale 2×', 'Double the size, then sharpen'],
+           ['off', 'None', 'Only remove the watermark']]
+          .map(([v, t, s]) => `<label><input type="radio" name="enhance" value="${v}" ${v === 'sharpen' ? 'checked' : ''}><span>${t}<small>${s}</small></span></label>`).join('')}
+      </div>
+      <p class="hint">The result is saved at maximum quality (JPG 95, no color subsampling).</p></div>
+    <p class="hint" style="margin-bottom:16px;">Paint over the whole watermark, a little past its edges. The area is filled in from its surroundings. Works best on plain or textured backgrounds.</p>`,
+
   'img-watermark': () => `
     <div class="opt"><label>Text</label><input type="text" name="text" value="CONFIDENTIAL" maxlength="80"></div>
     <div class="opt"><div class="label">Position</div><div class="positions">
@@ -399,6 +418,7 @@ let lastResult = null;
 let corners = {};    // scan-to-pdf: file id -> 4 [x, y] corners as 0..1 fractions
 let editing = null;  // scan-to-pdf: id of the file whose corners are being edited
 let cropBox = null;  // img-crop: [x, y, w, h] as 0..1 fractions of the image
+let strokes = [];    // img-unwatermark: [{size, points: [[u, v], ...]}], 0..1 fractions
 
 const $ = id => document.getElementById(id);
 const tool = () => TOOLS[toolKey];
@@ -492,7 +512,7 @@ function openTool(key) {
 
 function resetTool() {
   files = []; pages = []; selected = new Set(); lastResult = null;
-  corners = {}; editing = null; cropBox = null;
+  corners = {}; editing = null; cropBox = null; strokes = [];
   $('workspace').classList.remove('hidden');
   $('result').classList.add('hidden');
   $('working').classList.add('hidden');
@@ -538,6 +558,7 @@ async function uploadFiles(list) {
       pages = toolKey === 'organize' ? [...Array(n).keys()].map(i => ({ index: i, rotate: 0 })) : [...Array(n).keys()];
       selected = new Set();
       cropBox = null;
+      strokes = [];
     }
     showError(errors.join('\n'));
   } catch (e) {
@@ -566,6 +587,14 @@ function renderItems() {
     html = `<div class="grid-bar"><span>${esc(f.name)} · ${f.width} × ${f.height} px</span><span style="flex:1"></span>
       <button class="btn btn-secondary btn-sm" data-act="change-file">Change file</button></div>
       <div class="editor"><canvas id="editor-canvas"></canvas></div>`;
+  } else if (has && t.view === 'mask') {
+    const f = files[0];
+    html = `<div class="grid-bar"><span>${esc(f.name)} · ${f.width} × ${f.height} px</span><span style="flex:1"></span>
+      <button class="btn btn-secondary btn-sm" data-act="mask-undo">Undo</button>
+      <button class="btn btn-secondary btn-sm" data-act="mask-clear">Clear</button>
+      <button class="btn btn-secondary btn-sm" data-act="change-file">Change file</button></div>
+      <div class="editor"><canvas id="editor-canvas"></canvas>
+      <p class="hint" style="text-align:center;margin-top:8px;">Paint over the watermark.</p></div>`;
   } else if (has && (t.view === 'list' || t.multi)) {
     html = `<ul class="files" id="file-list">${files.map((f, i) => `
       <li class="file" draggable="${!!t.sortable}" data-i="${i}">
@@ -587,6 +616,7 @@ function renderItems() {
         <button class="btn btn-primary btn-sm" data-act="corners-done">Done</button></div></div>`;
   $('items').innerHTML = html;
   if (has && t.view === 'crop') mountEditor(files[0], 'crop');
+  if (has && t.view === 'mask') mountEditor(files[0], 'mask');
   if (editing && t.corners) mountEditor(files.find(f => f.id === editing), 'corners');
   updateRunButton();
 }
@@ -644,6 +674,8 @@ $('items').addEventListener('click', e => {
       case 'sel-all': selected = new Set(pages); break;
       case 'sel-none': selected = new Set(); break;
       case 'change-file': $('file-input').click(); return;
+      case 'mask-undo': strokes.pop(); if (editorState) drawEditor(); updateRunButton(); return;
+      case 'mask-clear': strokes = []; if (editorState) drawEditor(); updateRunButton(); return;
     }
     renderItems();
     return;
@@ -738,6 +770,7 @@ function drawEditor() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+  if (kind === 'mask') return drawMask(ctx);
   const pts = editorPoints();
   // Dim everything outside the selected area.
   ctx.save();
@@ -757,6 +790,35 @@ function drawEditor() {
   if (kind === 'crop' && cropBox && $('crop-size')) {
     const f = editorState.f;
     $('crop-size').textContent = `Crop: ${Math.round(cropBox[2] * f.width)} × ${Math.round(cropBox[3] * f.height)} px`;
+  }
+}
+
+// Brush strokes, painted opaque on a layer, then shown see-through (overlaps stay even).
+const brushSize = () => (getOptions().brush || 4) / 100;
+function drawMask(ctx) {
+  const { canvas, rect, hover } = editorState, dpr = window.devicePixelRatio || 1;
+  const layer = editorState.layer || (editorState.layer = document.createElement('canvas'));
+  layer.width = canvas.width; layer.height = canvas.height;
+  const l = layer.getContext('2d');
+  l.setTransform(dpr, 0, 0, dpr, 0, 0);
+  l.strokeStyle = l.fillStyle = '#ef4444'; l.lineCap = l.lineJoin = 'round';
+  const short = Math.min(rect.w, rect.h);
+  const toCanvas = ([u, v]) => [rect.x + u * rect.w, rect.y + v * rect.h];
+  for (const s of strokes) {
+    const pts = s.points.map(toCanvas), d = s.size * short;
+    l.lineWidth = d;
+    l.beginPath(); pts.forEach(([x, y], i) => i ? l.lineTo(x, y) : l.moveTo(x, y)); l.stroke();
+    if (pts.length === 1) { l.beginPath(); l.arc(pts[0][0], pts[0][1], d / 2, 0, Math.PI * 2); l.fill(); }
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 0.5;
+  ctx.drawImage(layer, 0, 0);
+  ctx.restore();
+  if (hover) {
+    const [x, y] = toCanvas(hover);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, brushSize() * short / 2, 0, Math.PI * 2); ctx.stroke();
   }
 }
 
@@ -796,6 +858,14 @@ $('items').addEventListener('pointerdown', e => {
   const pts = editorPoints();
   const near = pts.findIndex(([x, y]) => Math.hypot(x - px, y - py) < 14);
   const pos = editorPos(e);
+  if (editorState.kind === 'mask') {
+    strokes.push({ size: brushSize(), points: [pos] });
+    editorState.drag = { paint: true };
+    editorState.canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    drawEditor();
+    return;
+  }
   if (editorState.kind === 'corners') {
     if (near < 0) return;
     editorState.drag = { handle: near };
@@ -811,6 +881,16 @@ $('items').addEventListener('pointerdown', e => {
 });
 
 $('items').addEventListener('pointermove', e => {
+  if (editorState && editorState.kind === 'mask' && e.target.id === 'editor-canvas') {
+    const pos = editorPos(e);
+    editorState.hover = pos;
+    if (editorState.drag) {
+      const pts = strokes[strokes.length - 1].points, [pu, pv] = pts[pts.length - 1];
+      if (Math.hypot(pos[0] - pu, pos[1] - pv) > 0.002) pts.push(pos);
+    }
+    drawEditor();
+    return;
+  }
   const d = editorState && editorState.drag;
   if (!d || e.target.id !== 'editor-canvas') return;
   const pos = editorPos(e);
@@ -821,6 +901,10 @@ $('items').addEventListener('pointermove', e => {
   } else cropBox = cropFrom(d.fixed, pos);
   drawEditor();
 });
+
+$('items').addEventListener('pointerleave', e => {
+  if (e.target.id === 'editor-canvas' && editorState && editorState.kind === 'mask' && !editorState.drag) { editorState.hover = null; drawEditor(); }
+}, true);
 
 $('items').addEventListener('pointerup', () => {
   if (!editorState || !editorState.drag) return;
@@ -882,6 +966,7 @@ function updateRunButton() {
   if (t.view === 'select') ok = ok && selected.size > 0;
   if (t.view === 'organize') ok = ok && pages.length > 0;
   if (t.view === 'crop') ok = ok && !!cropBox && cropBox[2] > 0 && cropBox[3] > 0;
+  if (t.view === 'mask') ok = ok && strokes.length > 0;
   $('run-btn').disabled = !ok;
 }
 
@@ -898,6 +983,7 @@ $('run-btn').addEventListener('click', async () => {
   if (toolKey === 'organize') options.pages = pages;
   if (tool().view === 'select') options.selected = [...selected];
   if (tool().corners) options.corners = corners;
+  if (toolKey === 'img-unwatermark') options.strokes = strokes;
   if (toolKey === 'img-crop') {
     const f = files[0];
     options.box = [cropBox[0] * f.width, cropBox[1] * f.height, cropBox[2] * f.width, cropBox[3] * f.height].map(Math.round);
@@ -934,6 +1020,17 @@ function showResult(r) {
   }
   if (r.parts > 1) detail += `<p class="sub">${r.parts} PDF files in one .zip</p>`;
   if (r.images > 1) detail += `<p class="sub">${r.images} images in one .zip</p>`;
+  // Show image results. Remove watermark gets a before/after slider.
+  const isImage = /\.(jpe?g|png|gif|bmp|tiff?|webp)$/i.test(r.filename);
+  if (isImage) {
+    const src = `/preview/${r.job_id}?width=1200`;
+    detail += toolKey === 'img-unwatermark'
+      ? `<div><div class="preview" id="preview"><img src="${src}" alt="Result">
+           <div class="before" id="before" style="clip-path:inset(0 50% 0 0)"><img src="/thumb/${files[0].id}/0?width=1200" alt="Original"></div>
+           <span class="tag" style="left:8px">Before</span><span class="tag" style="right:8px">After</span></div></div>
+         <input type="range" class="compare" id="compare" min="0" max="100" value="50" aria-label="Before and after">`
+      : `<div><div class="preview"><img src="${src}" alt="Result"></div></div>`;
+  }
   if (r.not_found && r.not_found.length) detail += `<p class="sub" style="color:#b45309;margin-top:8px;">No page edges found in ${r.not_found.map(esc).join(', ')}: the whole photo was used. Use <b>Adjust</b> to set the corners.</p>`;
 
   $('result').innerHTML = `<div class="result">
@@ -944,6 +1041,7 @@ function showResult(r) {
         <button class="btn btn-secondary" id="tools-btn">More tools</button>
       </div></div>`;
   $('result').classList.remove('hidden');
+  if ($('compare')) $('compare').oninput = e => $('before').style.clipPath = `inset(0 ${100 - e.target.value}% 0 0)`;
   $('again-btn').onclick = () => resetTool();
   $('tools-btn').onclick = goHome;
 

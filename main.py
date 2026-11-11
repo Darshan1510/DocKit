@@ -39,7 +39,7 @@ atexit.register(shutil.rmtree, TMP_DIR, ignore_errors=True)
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif"}
 # Tools whose inputs are images (all others take PDFs).
 IMAGE_TOOLS = {"images-to-pdf", "scan-to-pdf", "img-compress", "img-convert", "img-resize", "img-crop",
-               "img-rotate", "img-scanned", "img-watermark"}
+               "img-rotate", "img-scanned", "img-watermark", "img-unwatermark"}
 
 # file_id -> {"path", "name", "kind", "pages", "encrypted", "size"}
 FILES: dict[str, dict] = {}
@@ -168,24 +168,29 @@ def thumb(file_id: str, page: int, width: int = 180):
     meta = FILES.get(file_id)
     if meta is None:
         raise HTTPException(404, "File not found")
-    width = max(40, min(width, 800))
+    width = max(40, min(width, 1600))
     if meta["kind"] == "image":
-        with Image.open(meta["path"]) as im:
-            im = ImageOps.exif_transpose(im)
-            im.thumbnail((width, width * 2))
-            if im.mode not in ("RGB", "L"):
-                im = im.convert("RGBA")
-                bg = Image.new("RGB", im.size, "white")
-                bg.paste(im, mask=im.split()[-1])
-                im = bg
-            buf = io.BytesIO()
-            im.save(buf, "JPEG", quality=80)
-            data = buf.getvalue()
+        data = _image_thumb(meta["path"], width)
     else:
         if meta["encrypted"] or meta["pages"] is None or not 0 <= page < meta["pages"]:
             raise HTTPException(404, "Page not found")
         data = tools.render_thumbnail(meta["path"], page, width)
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+
+def _image_thumb(path: Path, width: int) -> bytes:
+    """JPEG preview of an image file, upright, flattened onto white."""
+    with Image.open(path) as im:
+        im = ImageOps.exif_transpose(im)
+        im.thumbnail((width, width * 2))
+        if im.mode not in ("RGB", "L"):
+            im = im.convert("RGBA")
+            bg = Image.new("RGB", im.size, "white")
+            bg.paste(im, mask=im.split()[-1])
+            im = bg
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=88)
+        return buf.getvalue()
 
 
 @app.get("/scan/detect/{file_id}")
@@ -372,6 +377,11 @@ def _run_image_tool(tool: str, items: list, o: dict, work: Path, stem: str) -> t
         path, filename = image_tools.crop(items[0], o.get("box") or [], work)
         return path, filename, {}
 
+    if tool == "img-unwatermark":
+        path, filename = image_tools.remove_watermark(items[0], o.get("strokes") or [],
+                                                      str(o.get("enhance", "off")), work)
+        return path, filename, {}
+
     if tool == "img-rotate":
         outputs = image_tools.rotate_flip(items, int(o.get("angle", 90)), bool(o.get("flip_h", False)),
                                      bool(o.get("flip_v", False)), work)
@@ -417,6 +427,19 @@ def run_tool(tool: str, body: dict = Body(...)):
         raise HTTPException(400, "Could not process this PDF. It may be damaged.")
     JOBS[job_id] = {"path": path, "filename": filename}
     return {"job_id": job_id, "filename": filename, "size": path.stat().st_size, **details}
+
+
+@app.get("/preview/{job_id}")
+def preview(job_id: str, width: int = 1200):
+    """JPEG preview of an image result (any image format, even ones browsers cannot show)."""
+    job = JOBS.get(job_id)
+    if job is None or not job["path"].exists() or job["path"].suffix.lower() not in IMAGE_EXTS:
+        raise HTTPException(404, "No preview")
+    try:
+        data = _image_thumb(job["path"], max(40, min(width, 1600)))
+    except Exception:
+        raise HTTPException(404, "No preview")
+    return Response(data, media_type="image/jpeg")
 
 
 @app.get("/download/{job_id}")

@@ -1,4 +1,5 @@
-"""Image tools: compress, convert, resize, crop, rotate/flip, scanned look, watermark.
+"""Image tools: compress, convert, resize, crop, rotate/flip, scanned look, watermark,
+remove watermark.
 
 Every function takes (path on disk, original name) pairs and writes new files
 into workdir. Results are (path on disk, download name) pairs.
@@ -382,3 +383,161 @@ def watermark(items: list[Item], text: str, position: str, size: int, opacity: f
         ext = FORMATS[key][1]
         outputs.append((_write(workdir, i, encode(out, key, 92), ext), names(name, "-watermarked", ext)))
     return outputs
+
+
+# --- Remove watermark ---
+
+ENHANCE = ("off", "sharpen", "upscale")
+
+
+def _stroke_mask(size: tuple[int, int], strokes: list) -> np.ndarray:
+    """Paint brush strokes into a mask (255 = remove). Points are 0..1 fractions,
+    "size" is the brush diameter as a fraction of the image's shorter side."""
+    w, h = size
+    mask = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(mask)
+    short = min(w, h)
+    for stroke in strokes[:500]:
+        try:
+            d = max(2, round(float(stroke.get("size", 0.04)) * short))
+            pts = [(float(u) * w, float(v) * h) for u, v in list(stroke.get("points", []))[:5000]]
+        except (TypeError, ValueError, AttributeError):
+            raise ToolError("Paint over the watermark first.")
+        if not pts:
+            continue
+        if len(pts) > 1:
+            draw.line(pts, fill=255, width=d, joint="curve")
+        r = d / 2
+        for x, y in (pts[0], pts[-1]) if len(pts) > 1 else pts:
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=255)
+    return np.asarray(mask)
+
+
+def _pull_push(img: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """Smooth fill of the invalid pixels: average the known pixels over a pyramid of
+    ever smaller sizes, then blend back up. No seams, even in big areas."""
+    import cv2
+
+    h, w = valid.shape
+    weight = valid.astype(np.float32)
+    if h <= 4 or w <= 4 or weight.all():
+        known = weight > 0
+        out = img.copy()
+        if known.any() and not known.all():
+            out[~known] = img[known].mean(axis=0)
+        return out
+    sw, sh = (w + 1) // 2, (h + 1) // 2
+    num = cv2.resize(img * weight[..., None], (sw, sh), interpolation=cv2.INTER_AREA)
+    den = cv2.resize(weight, (sw, sh), interpolation=cv2.INTER_AREA)
+    small = num / np.maximum(den, 1e-6)[..., None]
+    small = _pull_push(small, den > 0.01)
+    up = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+    return np.where(valid[..., None], img, up)
+
+
+def _inpaint(rgb: np.ndarray, mask: np.ndarray, seed: int = 0) -> np.ndarray:
+    """Fill the masked area from its surroundings. Works on the mask's bounding box
+    only (fast on big photos), then adds matching grain so the fill is not too flat."""
+    import cv2
+
+    ys, xs = np.nonzero(mask)
+    h, w = mask.shape
+    short = min(w, h)
+    grow = max(2, round(short * 0.004))  # cover the soft edge of the watermark too
+    pad = max(16, round(short * 0.05))
+    x0, x1 = max(0, xs.min() - pad), min(w, xs.max() + pad + 1)
+    y0, y1 = max(0, ys.min() - pad), min(h, ys.max() + pad + 1)
+    crop = np.ascontiguousarray(rgb[y0:y1, x0:x1])
+    m = cv2.dilate(mask[y0:y1, x0:x1], cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * grow + 1,) * 2))
+    src = crop.astype(np.float32)
+    if hasattr(cv2, "xphoto"):
+        # Shift-map: fill the hole with real pixels copied from nearby, so texture
+        # and grain stay sharp instead of being smeared.
+        filled = np.zeros_like(crop)
+        cv2.xphoto.inpaint(cv2.cvtColor(crop, cv2.COLOR_RGB2BGR), cv2.bitwise_not(m), filled,
+                           cv2.xphoto.INPAINT_SHIFTMAP)
+        filled = cv2.cvtColor(filled, cv2.COLOR_BGR2RGB).astype(np.float32)
+        alpha = cv2.GaussianBlur(m.astype(np.float32) / 255, (0, 0), 1.0)[..., None]
+        alpha = np.maximum(alpha, (m[..., None] > 0).astype(np.float32))
+        out = rgb.copy()
+        out[y0:y1, x0:x1] = np.clip(src * (1 - alpha) + filled * alpha, 0, 255).astype(np.uint8)
+        return out
+    # Fallback without opencv-contrib. Near the edge of the mask: Telea inpainting, which continues edges and lines
+    # into the hole. Deep inside a wide mask Telea leaves seams, so blend towards a
+    # smooth multi-scale fill there.
+    bgr = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
+    telea = cv2.cvtColor(cv2.inpaint(bgr, m, 3, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB).astype(np.float32)
+    smooth = _pull_push(src, m == 0)
+    dist = cv2.distanceTransform(m, cv2.DIST_L2, 5)
+    deep = np.clip((dist - 4) / 10, 0, 1)[..., None]
+    filled = telea * (1 - deep) + smooth * deep
+
+    # Grain: match the noise of the untouched pixels around the mask. Median-based,
+    # so edges and text nearby do not count as noise.
+    ring = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1,) * 2)) & ~m
+    if ring.any():
+        detail = (src - cv2.GaussianBlur(src, (0, 0), 1.5)).mean(axis=2)[ring > 0]
+        sigma = 1.4826 * float(np.median(np.abs(detail - np.median(detail))))
+        if sigma > 0.5:
+            noise = np.random.default_rng(seed).normal(0, sigma, filled.shape[:2]).astype(np.float32)
+            noise = cv2.GaussianBlur(noise, (0, 0), 0.6) * 1.6  # fine film-like grain, not speckles
+            filled = filled + (noise * (m > 0))[..., None]
+
+    # Feather the edge so the fill blends into the photo.
+    alpha = cv2.GaussianBlur(m.astype(np.float32) / 255, (0, 0), max(1.0, grow / 2))[..., None]
+    alpha = np.maximum(alpha, (m[..., None] > 0).astype(np.float32))
+    blended = crop.astype(np.float32) * (1 - alpha) + filled * alpha
+    out = rgb.copy()
+    out[y0:y1, x0:x1] = np.clip(blended, 0, 255).astype(np.uint8)
+    return out
+
+
+def _enhance(im: Image.Image, mode: str) -> Image.Image:
+    """Optional clean-up after removal: sharpen, or upscale 2x then sharpen."""
+    from PIL import ImageFilter
+
+    if mode == "upscale":
+        w, h = im.width * 2, im.height * 2
+        check_pixels(w, h, "The upscaled image")
+        im = im.resize((w, h), Image.Resampling.LANCZOS)
+        return im.filter(ImageFilter.UnsharpMask(radius=2, percent=90, threshold=2))
+    if mode == "sharpen":
+        return im.filter(ImageFilter.UnsharpMask(radius=1.5, percent=70, threshold=2))
+    return im
+
+
+def remove_watermark(item: Item, strokes: list, enhance: str, workdir: Path) -> tuple[Path, str]:
+    path, name = item
+    if not isinstance(strokes, list) or not strokes:
+        raise ToolError("Paint over the watermark first.")
+    im, key = open_image(path, name)
+    info = im.info
+    mask = _stroke_mask(im.size, strokes)
+    if not mask.any():
+        raise ToolError("Paint over the watermark first.")
+    alpha = im.getchannel("A") if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info) else None
+    gray = im.mode in ("L", "LA", "1", "I;16", "I")
+    rgb = np.asarray(im.convert("RGB"))
+    out = Image.fromarray(_inpaint(rgb, mask, seed=len(strokes)))
+    out = _enhance(out, enhance if enhance in ENHANCE else "off")
+    if alpha is not None:
+        out.putalpha(alpha.resize(out.size, Image.Resampling.LANCZOS))
+    elif gray:
+        out = out.convert("L")
+    out.info = info
+    ext = FORMATS[key][1]
+    # Save at high quality so removal does not add compression artifacts.
+    data = encode(out, key, 95) if key != "jpg" else _encode_jpeg_max(out)
+    return _write(workdir, 0, data, ext), Names()(name, "-no-watermark", ext)
+
+
+def _encode_jpeg_max(im: Image.Image) -> bytes:
+    """JPEG at quality 95 with full color resolution (no chroma subsampling)."""
+    kwargs = {"quality": 95, "subsampling": 0, "optimize": True, "progressive": True}
+    if icc := im.info.get("icc_profile"):
+        kwargs["icc_profile"] = icc
+    if exif := _exif_bytes(im):
+        kwargs["exif"] = exif
+    buf = io.BytesIO()
+    _flatten(im).save(buf, "JPEG", **kwargs)
+    return buf.getvalue()
